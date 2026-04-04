@@ -27,3 +27,21 @@ Tool to push a range of commits via the API so they get signed by GitHub.
 - The committer will be replaced with the web flow one (`GitHub <noreply@github.com>`).
 - The commit hash will change (obviously).
 - The local repository will not be automatically updated to the newly created commits.
+
+### Example
+
+```bash
+git add .
+git commit -m 'test commit'
+go run github.com/pgaskin/push-signed-commits@v0.0.1 username/repo master HEAD
+```
+
+<!-- TODO: gh actions example -->
+
+### Alternatives
+
+- [planetscale/ghcommit](https://github.com/planetscale/ghcommit): doesn't use git, need to pass all changes as command-line arguments
+- [verified-bot-commit](https://github.com/IAreKyleW00t/verified-bot-commit): nodejs, more complex, doesn't handle some edge cases with git, uses the old github repo api
+- [Asana/push-signed-commits](https://github.com/Asana/push-signed-commits): python, much more complex, doesn't handle some edge cases with git
+- [step-security/github-api-commit-action](https://github.com/step-security/github-api-commit-action): bash, creates the commit manually instead of taking an existing one
+- [github/gh-aw push_signed_commits](https://github.com/github/gh-aw/blob/48d4b85d8bceb6aaa346ad415ef4a7128c42078b/actions/setup/js/push_signed_commits.cjs): doesn't handle some edge cases with git, buggy (e.g., it reads all files from the working tree instead of the index)
