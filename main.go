@@ -26,13 +26,15 @@ const MinGitMajor, MinGitMinor = 2, 38 // the minimum git version for the option
 const DefaultGitHubGraphqlURL = "https://api.github.com/graphql"
 
 var (
-	Chdir    = flag.String("C", "", "change to a different directory before running the command")
-	Git      = flag.String("g", "", "use a different git binary (minimum version "+strconv.Itoa(MinGitMajor)+"."+strconv.Itoa(MinGitMinor)+")")
-	DryRun   = flag.Bool("n", false, "do not push commits, just dump the mutations to stdout, one line per commit")
-	Insecure = flag.Bool("k", false, "do not validate ssl certificates")
-	Quiet    = flag.Bool("q", false, "do not print status messages to stderr")
-	Verbose  = flag.Bool("v", false, "print verbose information to stderr")
-	Debug    = flag.Bool("x", false, "print the git commands to stderr")
+	Chdir      = flag.String("C", "", "change to a different directory before running the command")
+	Git        = flag.String("g", "", "use a different git binary (minimum version "+strconv.Itoa(MinGitMajor)+"."+strconv.Itoa(MinGitMinor)+")")
+	DryRun     = flag.Bool("n", false, "do not push commits, just dump the mutations to stdout, one line per commit")
+	Insecure   = flag.Bool("k", false, "do not validate ssl certificates")
+	Quiet      = flag.Bool("q", false, "do not print status messages to stderr")
+	Verbose    = flag.Bool("v", false, "print verbose information to stderr")
+	Debug      = flag.Bool("x", false, "print the git commands to stderr")
+	Commit     = flag.Bool("commit", false, "commit the staged changes")
+	AllowEmpty = flag.Bool("allow-empty", false, "allow an empty commit to be created (only valid with -commit)")
 )
 
 var (
@@ -51,7 +53,9 @@ func usage() {
 	} else {
 		name = "push-signed-commits"
 	}
-	fmt.Fprintf(flag.CommandLine.Output(), "usage: %s [flags] username/repo target_branch rev|rev..rev\n", name)
+	fmt.Fprintf(flag.CommandLine.Output(), "usage:\n")
+	fmt.Fprintf(flag.CommandLine.Output(), "  %s [flags] username/repo target_branch rev|rev..rev\n", name)
+	fmt.Fprintf(flag.CommandLine.Output(), "  %s [flags] -commit [-allow-empty] username/repo target_branch commit_message\n", name)
 	fmt.Fprintf(flag.CommandLine.Output(), "\n")
 	fmt.Fprintf(flag.CommandLine.Output(), "flags:\n")
 	flag.CommandLine.PrintDefaults()
@@ -67,12 +71,21 @@ func usage() {
 	fmt.Fprintf(flag.CommandLine.Output(), "  30    not pushing anymore commits due to a commit with unsupported content\n")
 	fmt.Fprintf(flag.CommandLine.Output(), "\n")
 	fmt.Fprintf(flag.CommandLine.Output(), "The final commit hashes will be written to stdout as they are pushed.\n")
+	fmt.Fprintf(flag.CommandLine.Output(), "\n")
+	fmt.Fprintf(flag.CommandLine.Output(), "If there are no commits in the specified range (or -commit is specified without\n")
+	fmt.Fprintf(flag.CommandLine.Output(), "anything in the staging area or -allow-empty), the command does nothing (and\n")
+	fmt.Fprintf(flag.CommandLine.Output(), "prints a message if not -q), then exits with status 0.\n")
 }
 
 func main() {
 	flag.Parse()
 
 	if flag.NArg() != 3 {
+		usage()
+		os.Exit(2)
+	}
+
+	if *AllowEmpty && !*Commit {
 		usage()
 		os.Exit(2)
 	}
@@ -105,7 +118,13 @@ type notPushableError struct {
 }
 
 func (err *notPushableError) Error() string {
-	return fmt.Sprintf("commit %s cannot be pushed via the API: %v", err.Commit, err.Reason)
+	var what string
+	if err.Commit == "" {
+		what = "staging area"
+	} else {
+		what = "commit " + string(err.Commit)
+	}
+	return fmt.Sprintf("%s cannot be pushed via the API: %v", what, err.Reason)
 }
 
 func (err *notPushableError) Unwrap() error {
@@ -137,7 +156,7 @@ func gitParseErrf(format string, a ...any) error {
 	}
 }
 
-func run(repo, branch, spec string) error {
+func run(repo, branch, specOrMessage string) error {
 	if p, err := exec.LookPath(cmp.Or(*Git, "git")); err != nil {
 		return fmt.Errorf("resolve git binary: %w", err)
 	} else {
@@ -157,6 +176,85 @@ func run(repo, branch, spec string) error {
 		return fmt.Errorf("git %q is too old (we need at least %d.%d)", ver, MinGitMajor, MinGitMinor)
 	}
 
+	if *Commit {
+		return runCommit(repo, branch, specOrMessage)
+	}
+	return runCommits(repo, branch, specOrMessage)
+}
+
+func runCommit(repo, branch, message string) error {
+	parent, err := gitHead()
+	if err != nil {
+		return fmt.Errorf("get head commit: %w", err)
+	}
+
+	files, err := gitStagedDiff(parent)
+	if err != nil {
+		return fmt.Errorf("diff staging area against head %s: %w", parent, err)
+	}
+	for _, file := range files {
+		verbose("diff %s %q", file.Status, file.Path)
+	}
+
+	if !*AllowEmpty && len(files) == 0 {
+		if !*Quiet {
+			fmt.Fprintf(os.Stderr, "nothing to commit in the staging area\n")
+		}
+		return nil
+	}
+
+	subject, body := cutCommitMessage(message)
+	verbose("subject %q", subject)
+	verbose("body %q", body)
+
+	input := gqlCreateCommitOnBranchInput{
+		Branch: gqlCommittableBranch{
+			RepositoryNameWithOwner: repo,
+			BranchName:              branch,
+		},
+		Message: gqlCommitMessage{
+			Headline: subject,
+			Body:     body,
+		},
+		ExpectedHeadOid: parent,
+	}
+
+	// note: files are transformed (e.g., for core.autocrlf) when adding them to
+	// the index, so that isn't something we have to worry about here
+
+	input.FileChanges, err = changes("", files)
+	if err != nil {
+		return err
+	}
+
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		return fmt.Errorf("marshal json: %w", err)
+	}
+
+	if *DryRun {
+		os.Stdout.Write(append(inputJSON, '\n'))
+		return nil
+	}
+
+	verbose("creating commit")
+
+	if !*Quiet {
+		fmt.Fprintf(os.Stderr, "pushing new commit from staging area (size=%d additions=%d deletions=%d) over %s:%s@%s\n", len(inputJSON), len(input.FileChanges.Additions), len(input.FileChanges.Deletions), input.Branch.RepositoryNameWithOwner, input.Branch.BranchName, input.ExpectedHeadOid)
+	}
+	newCommit, err := ghCreateCommitOnBranch(input)
+	if err != nil {
+		return fmt.Errorf("failed to create new commit from staging area: %w", err)
+	}
+	if !*Quiet {
+		fmt.Fprintf(os.Stderr, "-> %s\n", newCommit)
+	}
+	fmt.Println(newCommit)
+
+	return nil
+}
+
+func runCommits(repo, branch, spec string) error {
 	commits, err := gitCommits(spec)
 	if err != nil {
 		return fmt.Errorf("list commits for %q: %w", spec, err)
@@ -165,7 +263,9 @@ func run(repo, branch, spec string) error {
 
 	if len(commits) == 0 {
 		// e.g., for HEAD..HEAD
-		verbose("nothing to push")
+		if !*Quiet {
+			fmt.Fprintf(os.Stderr, "nothing to push\n")
+		}
 		return nil
 	}
 
@@ -203,11 +303,11 @@ func run(repo, branch, spec string) error {
 				RepositoryNameWithOwner: repo,
 				BranchName:              branch,
 			},
-			ExpectedHeadOid: cmp.Or(prevNewCommit, parent),
 			Message: gqlCommitMessage{
 				Headline: subject,
 				Body:     body,
 			},
+			ExpectedHeadOid: cmp.Or(prevNewCommit, parent),
 		}
 
 		files, err := gitCommitDiff(parent, commit)
@@ -258,16 +358,22 @@ func changes(commit OID, diff []gitDiffFile) (changes gqlFileChanges, err error)
 		Additions: []gqlFileAddition{},
 		Deletions: []gqlFileDeletion{},
 	}
+	var what string
+	if commit == "" {
+		what = "staging area"
+	} else {
+		what = "commit " + string(commit)
+	}
 	for _, file := range diff {
 		switch file.Status {
 		case gitCommitDiffAdded, gitCommitDiffModified, gitCommitDiffTypeChanged:
 			objs, err := gitListTreeObjects(commit, file.Path)
 			if err != nil {
-				return changes, fmt.Errorf("get commit %s tree object %q: %w", commit, file.Path, err)
+				return changes, fmt.Errorf("get %s tree object %q: %w", what, file.Path, err)
 			}
 			if len(objs) != 1 {
 				// diff-tree doesn't return trees, so it should only ever have one
-				return changes, fmt.Errorf("get commit %s tree object %q: expected exactly one object", commit, file.Path)
+				return changes, fmt.Errorf("get %s tree object %q: expected exactly one object", what, file.Path)
 			}
 			obj := objs[0]
 
@@ -294,7 +400,7 @@ func changes(commit OID, diff []gitDiffFile) (changes gqlFileChanges, err error)
 
 			buf, err := gitCatFile(obj.OID)
 			if err != nil {
-				return changes, fmt.Errorf("get commit %s file %q contents: %w", commit, file.Path, err)
+				return changes, fmt.Errorf("get %s file %q contents: %w", what, file.Path, err)
 			}
 			changes.Additions = append(changes.Additions, gqlFileAddition{
 				Path:     file.Path,
@@ -511,6 +617,18 @@ func (o OID) Valid() bool {
 	return len(o) != 0
 }
 
+func gitHead() (OID, error) {
+	buf, err := git("rev-parse", "--verify", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	oid := OID(string(bytes.TrimSuffix(buf, []byte{'\n'})))
+	if !oid.Valid() {
+		return "", gitParseErrf("invalid oid %q", oid)
+	}
+	return oid, nil
+}
+
 func gitCommits(revspec string) (commits []OID, err error) {
 	buf, err := git("rev-list", // verify revs, list commits between them, and resolve them to their commit hash
 		"-z",               // null-terminated output
@@ -614,6 +732,20 @@ func (f gitDiffFile) String() string {
 	return string(appendMaybeQuoteToASCII([]byte{byte(f.Status), ' '}, f.Path))
 }
 
+func gitStagedDiff(treeish OID) (files []gitDiffFile, err error) {
+	buf, err := git("diff-index", // low-level tree diff
+		"-z",               // null-terminated
+		"-r",               // recurse into trees (and don't return the trees themselves)
+		"--name-status",    // only status and paths
+		"--cached",         // only index (i.e.,  staging area), not working tree files
+		"--end-of-options", // no more options
+		string(treeish))    // target
+	if err != nil {
+		return nil, err
+	}
+	return gitParseDiffTree(buf)
+}
+
 func gitCommitDiff(treeishA, treeishB OID) (files []gitDiffFile, err error) {
 	buf, err := git("diff-tree", // low-level tree diff
 		"-z",               // null-terminated
@@ -625,6 +757,10 @@ func gitCommitDiff(treeishA, treeishB OID) (files []gitDiffFile, err error) {
 	if err != nil {
 		return nil, err
 	}
+	return gitParseDiffTree(buf)
+}
+
+func gitParseDiffTree(buf []byte) (files []gitDiffFile, err error) {
 	rest := buf
 	for len(rest) != 0 {
 		var (
@@ -666,7 +802,22 @@ type gitObject struct {
 }
 
 func gitListTreeObjects(treeish OID, path string) (objects []gitObject, err error) {
-	buf, err := git("ls-tree", "-z", "--format=%(objecttype) %(objectmode) %(objectname)", "--end-of-options", string(treeish), path)
+	var buf []byte
+	if treeish != "" {
+		buf, err = git("ls-tree", // information about a tree object in the repository
+			"-z", // null terminated
+			"--format=%(objecttype) %(objectmode) %(objectname)", // fields
+			"--end-of-options", // escape
+			string(treeish),    // tree object
+			path)               // path
+	} else {
+		buf, err = git("ls-files", // information about files in the index and working tree
+			"-z", // null terminated
+			"--format=%(objecttype) %(objectmode) %(objectname)", // fields
+			"--cached",         // only index (i.e.,  staging area), not working tree files
+			"--end-of-options", // escape
+			path)               // path
+	}
 	if err != nil {
 		return nil, err
 	}
