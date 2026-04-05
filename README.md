@@ -47,13 +47,11 @@ Create verified commits for bots or workflows via the GitHub API.
     - Does not support pushing commits containing changes to non-regular files (e.g., symlinks, submodules, executables). 
 - The local repository will not be automatically updated to the newly created commits (if you want that, fetch then do a `git reset --soft` to the last commit printed).
 
-### Compatibility
-
-I'm still deciding what I want the CLI to look like. The arguments and output are subject to change for now, so you should pin to a specific version.
-
-A working version should continue to work indefinitely, as it uses core git functionality and the GitHub API is unlikely to change.
-
 ### Examples
+
+See `go run github.com/pgaskin/push-signed-commits@v0.0.4 -help` for more information.
+
+##### Simple
 
 ```bash
 # create and push a commit directly (and skip it if there aren't any changes to commit)
@@ -74,7 +72,41 @@ go run github.com/pgaskin/push-signed-commits@v0.0.4 username/repo master HEAD
 go run github.com/pgaskin/push-signed-commits@v0.0.4 username/repo master HEAD@{u}..HEAD
 ```
 
-<!-- TODO: gh actions example -->
+##### GitHub Actions
+
+```yaml
+- run: date +%Y-%m-%d > date.txt
+- run: git add . && go run github.com/pgaskin/push-signed-commits@v0.0.4 -commit "$GITHUB_REPOSITORY" "$GITHUB_REF" "automatic update"
+  env:
+    GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+```
+
+##### GitHub Actions (app)
+
+```yaml
+- uses: actions/checkout@v6
+  with:
+    repository: username/other-repo
+    path: other-repo
+    filter: blob:none
+    fetch-depth: 0
+- run: date +%Y-%m-%d > other-repo/date.txt
+- run: git add . && go run github.com/pgaskin/push-signed-commits@v0.0.4 -app ${{vars.APP_ID}} -commit username/other-repo data "automatic update"
+  env:
+    APP_PRIVATE_KEY: ${{secrets.APP_PRIVATE_KEY}}
+  working-directory: other-repo
+```
+
+### Compatibility
+
+I'm still deciding what I want the CLI to look like. The arguments and output are subject to change for now, so you should pin to a specific version.
+
+A working version should continue to work indefinitely, as it uses core git functionality and the GitHub API is unlikely to change.
+
+### TODO
+
+- [ ] Proper GitHub Action wrapper.
+- [ ] More tests.
 
 ### Alternatives
 
