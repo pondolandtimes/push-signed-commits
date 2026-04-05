@@ -211,10 +211,6 @@ func run(repo, branch, spec string) error {
 				Headline: subject,
 				Body:     body,
 			},
-			FileChanges: gqlFileChanges{
-				Additions: []gqlFileAddition{},
-				Deletions: []gqlFileDeletion{},
-			},
 		}
 
 		files, err := gitCommitDiff(parent, commit)
@@ -225,57 +221,9 @@ func run(repo, branch, spec string) error {
 			verbose("diff %s %q", file.Status, file.Path)
 		}
 
-		for _, file := range files {
-			switch file.Status {
-			case gitCommitDiffAdded, gitCommitDiffModified, gitCommitDiffTypeChanged:
-				objs, err := gitListTreeObjects(commit, file.Path)
-				if err != nil {
-					return fmt.Errorf("get commit %s tree object %q: %w", commit, file.Path, err)
-				}
-				if len(objs) != 1 {
-					// diff-tree doesn't return trees, so it should only ever have one
-					return fmt.Errorf("get commit %s tree object %q: expected exactly one object", commit, file.Path)
-				}
-				obj := objs[0]
-
-				switch obj.Type {
-				case "blob": // file
-					// okay
-				case "commit": // submodule
-					return notPushableErrf(commit, "commit contains an added/modified submodule %q", file.Path)
-				case "tree":
-					return fmt.Errorf("wtf: why is %q a tree", file.Path)
-				default:
-					return notPushableErrf(commit, "commit contains an added/modified object %q with unknown type %s", file.Path, obj.Type)
-				}
-				switch obj.Mode {
-				case 100644: // regular file
-					// okay
-				case 100755: // executable file
-					return notPushableErrf(commit, "commit contains an executable file %q", file.Path)
-				case 120000: // symbolic link
-					return notPushableErrf(commit, "commit contains a symbolic link %q", file.Path)
-				default: // should never happen since git doesn't store other modes
-					return notPushableErrf(commit, "commit contains a non-regular file %q with mode %d", file.Path, obj.Mode)
-				}
-
-				buf, err := gitCatFile(obj.OID)
-				if err != nil {
-					return fmt.Errorf("get commit %s file %q contents: %w", commit, file.Path, err)
-				}
-				input.FileChanges.Additions = append(input.FileChanges.Additions, gqlFileAddition{
-					Path:     file.Path,
-					Contents: gqlBase64String(buf),
-				})
-
-			case gitCommitDiffDeleted:
-				input.FileChanges.Deletions = append(input.FileChanges.Deletions, gqlFileDeletion{
-					Path: file.Path,
-				})
-
-			default:
-				return notPushableErrf(commit, "unsupported diff status %s (%s)", file.Status, file)
-			}
+		input.FileChanges, err = changes(commit, files)
+		if err != nil {
+			return err
 		}
 
 		inputJSON, err := json.Marshal(input)
@@ -305,8 +253,67 @@ func run(repo, branch, spec string) error {
 
 		prevNewCommit = newCommit
 	}
-
 	return nil
+}
+
+func changes(commit OID, diff []gitDiffFile) (changes gqlFileChanges, err error) {
+	changes = gqlFileChanges{
+		Additions: []gqlFileAddition{},
+		Deletions: []gqlFileDeletion{},
+	}
+	for _, file := range diff {
+		switch file.Status {
+		case gitCommitDiffAdded, gitCommitDiffModified, gitCommitDiffTypeChanged:
+			objs, err := gitListTreeObjects(commit, file.Path)
+			if err != nil {
+				return changes, fmt.Errorf("get commit %s tree object %q: %w", commit, file.Path, err)
+			}
+			if len(objs) != 1 {
+				// diff-tree doesn't return trees, so it should only ever have one
+				return changes, fmt.Errorf("get commit %s tree object %q: expected exactly one object", commit, file.Path)
+			}
+			obj := objs[0]
+
+			switch obj.Type {
+			case "blob": // file
+				// okay
+			case "commit": // submodule
+				return changes, notPushableErrf(commit, "contains an added/modified submodule %q", file.Path)
+			case "tree":
+				return changes, fmt.Errorf("wtf: why is %q a tree", file.Path)
+			default:
+				return changes, notPushableErrf(commit, "contains an added/modified object %q with unknown type %s", file.Path, obj.Type)
+			}
+			switch obj.Mode {
+			case 100644: // regular file
+				// okay
+			case 100755: // executable file
+				return changes, notPushableErrf(commit, "contains an executable file %q", file.Path)
+			case 120000: // symbolic link
+				return changes, notPushableErrf(commit, "contains a symbolic link %q", file.Path)
+			default: // should never happen since git doesn't store other modes
+				return changes, notPushableErrf(commit, "contains a non-regular file %q with mode %d", file.Path, obj.Mode)
+			}
+
+			buf, err := gitCatFile(obj.OID)
+			if err != nil {
+				return changes, fmt.Errorf("get commit %s file %q contents: %w", commit, file.Path, err)
+			}
+			changes.Additions = append(changes.Additions, gqlFileAddition{
+				Path:     file.Path,
+				Contents: gqlBase64String(buf),
+			})
+
+		case gitCommitDiffDeleted:
+			changes.Deletions = append(changes.Deletions, gqlFileDeletion{
+				Path: file.Path,
+			})
+
+		default:
+			return changes, notPushableErrf(commit, "unsupported diff status %s (%s)", file.Status, file)
+		}
+	}
+	return changes, nil
 }
 
 type gqlCreateCommitOnBranchInput struct {
