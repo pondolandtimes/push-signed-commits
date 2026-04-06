@@ -58,7 +58,7 @@ func TestCutCommitMessage(t *testing.T) {
 			body:    "body\n  body2\nbody3",
 		},
 	} {
-		subject, body := cutCommitMessage(tc.message)
+		subject, body := CutCommitMessage(tc.message)
 		if tc.subject != subject || tc.body != body {
 			t.Errorf("formatCommitMessage(%q) - %s\n\texpected\n\t\tsubject %q\n\t\tbody %q\n\tgot\n\t\tsubject %q\n\t\tbody %q", tc.message, tc.what, tc.subject, tc.body, subject, body)
 		}

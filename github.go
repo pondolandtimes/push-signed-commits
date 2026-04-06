@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"cmp"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
@@ -16,64 +15,21 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
-	"os"
-	"runtime"
-	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
 )
 
 const (
-	DefaultGitHubApiURL     = "https://api.github.com"
-	DefaultGitHubGraphqlURL = "https://api.github.com/graphql"
+	DefaultGitHubAPI     GitHubAPI     = "https://api.github.com"
+	DefaultGitHubGraphQL GitHubGraphQL = "https://api.github.com/graphql"
 )
 
-var DefaultUserAgent = func() string {
-	var ua strings.Builder
+type GitHubToken string
 
-	ua.WriteString("push-signed-commits/")
-	if info, ok := debug.ReadBuildInfo(); ok && strings.HasPrefix(info.Main.Version, "v") {
-		ua.WriteString(info.Main.Version[1:])
-	} else {
-		ua.WriteString("devel")
-	}
-	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Path != "" {
-		ua.WriteString(" (")
-		ua.WriteString(runtime.GOOS)
-		ua.WriteString("/")
-		ua.WriteString(runtime.GOARCH)
-		ua.WriteString("; ")
-		ua.WriteString(info.Main.Path)
-		if info.Main.Sum != "" {
-			ua.WriteString(" ")
-			ua.WriteString(info.Main.Sum)
-		}
-		ua.WriteString(")")
-	}
+type GitHubAPI string
 
-	if ci, _ := strconv.ParseBool(os.Getenv("CI")); ci && os.Getenv("GITHUB_ACTION") != "" {
-		ua.WriteString(" github-actions (")
-		ua.WriteString(os.Getenv("GITHUB_REPOSITORY"))
-		if v := os.Getenv("GITHUB_RUN_ID"); v != "" {
-			ua.WriteString("; run-id=")
-			ua.WriteString(v)
-		}
-		if v := os.Getenv("GITHUB_ACTOR_ID"); v != "" {
-			ua.WriteString("; actor-id=")
-			ua.WriteString(v)
-		}
-		if v := os.Getenv("RUNNER_ENVIRONMENT"); v != "" {
-			ua.WriteString("; runner-environment=")
-			ua.WriteString(v)
-		}
-		ua.WriteString(")")
-	}
-
-	return ua.String()
-}()
-
-func ghAppJWT(appID int64, key *rsa.PrivateKey) (string, error) {
+func (gh GitHubAPI) AppJWT(appID int64, key *rsa.PrivateKey) (GitHubToken, error) {
 	var jwt []byte
 	jwt = base64.RawURLEncoding.AppendEncode(jwt, []byte(`{"alg":"RS256","typ":"JWT"}`))
 	jwt = append(jwt, '.')
@@ -90,38 +46,15 @@ func ghAppJWT(appID int64, key *rsa.PrivateKey) (string, error) {
 
 	jwt = append(jwt, '.')
 	jwt = base64.RawURLEncoding.AppendEncode(jwt, sig)
-	return string(jwt), nil
+	return GitHubToken(jwt), nil
 }
 
-func ghGetRepoInstallation(repo, jwt string) (int64, error) {
+func (gh GitHubAPI) GetRepoInstallation(jwt GitHubToken, repo string) (int64, error) {
 	verbose("getting app installation id for repo %q", repo)
-
-	u, err := url.Parse(GitHubApiURL)
+	resp, buf, err := gh.request(jwt, http.MethodGet, "repos/"+repo+"/installation", nil)
 	if err != nil {
-		return 0, fmt.Errorf("create request: %w", err)
+		return 0, err
 	}
-	u = u.JoinPath("/repos", repo, "installation")
-
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
-	if err != nil {
-		return 0, fmt.Errorf("create request: %w", err)
-	}
-
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2026-03-10")
-	req.Header.Set("Authorization", "Bearer "+jwt)
-	req.Header.Set("User-Agent", cmp.Or(*UserAgent, DefaultUserAgent))
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return 0, fmt.Errorf("do request: %w", err)
-	}
-	buf, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if err != nil {
-		return 0, fmt.Errorf("read response: %w", err)
-	}
-
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("response status %d (body: %q)", resp.StatusCode, buf)
 	}
@@ -140,50 +73,21 @@ func ghGetRepoInstallation(repo, jwt string) (int64, error) {
 	return obj.ID, nil
 }
 
-func ghCreateInstallationToken(jwt, repo string, installID int64) (string, error) {
-	verbose("getting app installation token for repo %q", repo)
-
+func (gh GitHubAPI) CreateInstallationToken(jwt GitHubToken, repo string, installID int64) (GitHubToken, error) {
 	if _, r, ok := strings.Cut(repo, "/"); ok {
 		repo = r
 	}
-	reqObjJSON, err := json.Marshal(map[string]any{
+
+	verbose("getting app installation token for repo %q", repo)
+	resp, buf, err := gh.request(jwt, http.MethodPost, "app/installations/"+strconv.FormatInt(installID, 10)+"/access_tokens", map[string]any{
 		"repositories": []string{repo},
 		"permissions": map[string]string{
 			"contents": "write",
 		},
 	})
 	if err != nil {
-		return "", fmt.Errorf("marshal request: %w", err)
+		return "", err
 	}
-
-	u, err := url.Parse(GitHubApiURL)
-	if err != nil {
-		return "", fmt.Errorf("create request: %w", err)
-	}
-	u = u.JoinPath("/app", "installations", strconv.FormatInt(installID, 10), "access_tokens")
-
-	req, err := http.NewRequest(http.MethodPost, u.String(), bytes.NewReader(reqObjJSON))
-	if err != nil {
-		return "", fmt.Errorf("create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Content-Length", strconv.Itoa(len(reqObjJSON)))
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2026-03-10")
-	req.Header.Set("Authorization", "Bearer "+jwt)
-	req.Header.Set("User-Agent", cmp.Or(*UserAgent, DefaultUserAgent))
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("do request: %w", err)
-	}
-	buf, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if err != nil {
-		return "", fmt.Errorf("read response: %w", err)
-	}
-
 	if resp.StatusCode != http.StatusCreated {
 		return "", fmt.Errorf("response status %d (body: %q)", resp.StatusCode, buf)
 	}
@@ -205,38 +109,15 @@ func ghCreateInstallationToken(jwt, repo string, installID int64) (string, error
 	}
 	verbose("got installation token")
 
-	return obj.Token, nil
+	return GitHubToken(obj.Token), nil
 }
 
-func ghRevokeInstallationToken(token string) error {
+func (gh GitHubAPI) RevokeInstallationToken(token GitHubToken) error {
 	verbose("revoking app installation token")
-
-	u, err := url.Parse(GitHubApiURL)
+	resp, buf, err := gh.request(token, http.MethodDelete, "installation/token", nil)
 	if err != nil {
-		return fmt.Errorf("create request: %w", err)
+		return err
 	}
-	u = u.JoinPath("/installation", "token")
-
-	req, err := http.NewRequest(http.MethodDelete, u.String(), nil)
-	if err != nil {
-		return fmt.Errorf("create request: %w", err)
-	}
-
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2026-03-10")
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("User-Agent", cmp.Or(*UserAgent, DefaultUserAgent))
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("do request: %w", err)
-	}
-	buf, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if err != nil {
-		return fmt.Errorf("read response: %w", err)
-	}
-
 	if resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("response status %d (body: %q)", resp.StatusCode, buf)
 	}
@@ -245,44 +126,95 @@ func ghRevokeInstallationToken(token string) error {
 	return nil
 }
 
-type gqlCreateCommitOnBranchInput struct {
-	Branch          gqlCommittableBranch `json:"branch"`
-	ExpectedHeadOid gqlGitObjectID       `json:"expectedHeadOid"`
-	Message         gqlCommitMessage     `json:"message"`
-	FileChanges     gqlFileChanges       `json:"fileChanges"`
+func (gh GitHubAPI) request(token GitHubToken, method, path string, body any) (*http.Response, []byte, error) {
+	u, err := url.Parse(string(gh))
+	if err != nil {
+		return nil, nil, fmt.Errorf("create request: %w", err)
+	}
+	u = u.JoinPath("/", path) // not ResolveReference since we just want to append the elements
+
+	var (
+		r        io.Reader
+		bodyJSON []byte
+	)
+	if body != nil {
+		bodyJSON, err = json.Marshal(body)
+		if err != nil {
+			return nil, nil, fmt.Errorf("marshal request: %w", err)
+		}
+		r = bytes.NewReader(bodyJSON)
+	}
+	req, err := http.NewRequest(method, u.String(), r)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create request: %w", err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Length", strconv.Itoa(len(bodyJSON)))
+	}
+
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2026-03-10")
+
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+string(token))
+	}
+	if UserAgent != "" {
+		req.Header.Set("User-Agent", UserAgent)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	buf, err := io.ReadAll(resp.Body)
+	if err != nil {
+		err = fmt.Errorf("read response: %w", err)
+	}
+	return resp, buf, err
 }
 
-type gqlCommittableBranch struct {
+type CreateCommitOnBranchInput struct {
+	Branch          CommittableBranch `json:"branch"`
+	ExpectedHeadOid GitObjectID       `json:"expectedHeadOid"`
+	Message         CommitMessage     `json:"message"`
+	FileChanges     FileChanges       `json:"fileChanges"`
+}
+
+type CommittableBranch struct {
 	RepositoryNameWithOwner string `json:"repositoryNameWithOwner"`
 	BranchName              string `json:"branchName"`
 }
 
-type gqlGitObjectID = OID
+type GitObjectID = OID
 
-type gqlCommitMessage struct {
+type CommitMessage struct {
 	Headline string `json:"headline"`
 	Body     string `json:"body"`
 }
 
-type gqlFileChanges struct {
-	Additions []gqlFileAddition `json:"additions"`
-	Deletions []gqlFileDeletion `json:"deletions"`
+type FileChanges struct {
+	Additions []FileAddition `json:"additions"`
+	Deletions []FileDeletion `json:"deletions"`
 }
 
-type gqlFileAddition struct {
-	Contents gqlBase64String `json:"contents"`
-	Path     string          `json:"path"`
+type FileAddition struct {
+	Contents Base64String `json:"contents"`
+	Path     string       `json:"path"`
 }
 
-type gqlFileDeletion struct {
+type FileDeletion struct {
 	Path string `json:"path"`
 }
 
-type gqlBase64String []byte
+type Base64String []byte
 
-var _ json.Marshaler = (gqlBase64String)(nil)
+var _ json.Marshaler = (Base64String)(nil)
+var _ json.Unmarshaler = (*Base64String)(nil)
 
-func (b gqlBase64String) MarshalJSON() ([]byte, error) {
+func (b Base64String) MarshalJSON() ([]byte, error) {
 	dst := make([]byte, 0, base64.StdEncoding.EncodedLen(len(b))+2)
 	dst = append(dst, '"')
 	dst = base64.StdEncoding.AppendEncode(dst, b)
@@ -290,7 +222,22 @@ func (b gqlBase64String) MarshalJSON() ([]byte, error) {
 	return dst, nil
 }
 
-func ghCreateCommitOnBranch(input gqlCreateCommitOnBranchInput) (OID, error) {
+func (b *Base64String) UnmarshalJSON(buf []byte) error {
+	var s string
+	if err := json.Unmarshal(buf, &s); err != nil {
+		return err
+	}
+	if x, err := base64.StdEncoding.DecodeString(s); err != nil {
+		return err
+	} else {
+		*b = Base64String(x)
+	}
+	return nil
+}
+
+type GitHubGraphQL string
+
+func (gh GitHubGraphQL) CreateCommitOnBranch(token GitHubToken, input CreateCommitOnBranchInput) (OID, error) {
 	query := `
 		mutation($input: CreateCommitOnBranchInput!) {
 			createCommitOnBranch(input: $input) {
@@ -300,14 +247,7 @@ func ghCreateCommitOnBranch(input gqlCreateCommitOnBranchInput) (OID, error) {
 			}
 		}
 	`
-	type result struct {
-		CreateCommitOnBranch struct {
-			Commit struct {
-				OID OID `json:"oid"`
-			} `json:"commit"`
-		} `json:"createCommitOnBranch"`
-	}
-	resp, err := ghGraphql[result](query, map[string]any{"input": input})
+	data, err := gh.query(token, query, map[string]any{"input": input})
 	if err != nil {
 		// best-effort attempt to have better errors for certain cases (as of 2026-04-04)
 		switch {
@@ -318,15 +258,25 @@ func ghCreateCommitOnBranch(input gqlCreateCommitOnBranchInput) (OID, error) {
 		}
 		return "", err
 	}
-	if !resp.CreateCommitOnBranch.Commit.OID.Valid() {
-		return "", fmt.Errorf("github created the commit but returned an empty/invalid oid %q", resp.CreateCommitOnBranch.Commit.OID)
+	var obj struct {
+		CreateCommitOnBranch struct {
+			Commit struct {
+				OID OID `json:"oid"`
+			} `json:"commit"`
+		} `json:"createCommitOnBranch"`
 	}
-	return resp.CreateCommitOnBranch.Commit.OID, nil
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return "", fmt.Errorf("parse response: %w", err)
+	}
+	if !obj.CreateCommitOnBranch.Commit.OID.Valid() {
+		return "", fmt.Errorf("github created the commit but returned an empty/invalid oid %q", obj.CreateCommitOnBranch.Commit.OID)
+	}
+	return obj.CreateCommitOnBranch.Commit.OID, nil
 }
 
 var ghMutationRateLimit *time.Ticker
 
-func ghGraphql[T any](query string, variables map[string]any) (*T, error) {
+func (gh GitHubGraphQL) query(token GitHubToken, query string, variables map[string]any) (json.RawMessage, error) {
 	var reqObj struct {
 		Query     string         `json:"query"`
 		Variables map[string]any `json:"variables"`
@@ -340,7 +290,7 @@ func ghGraphql[T any](query string, variables map[string]any) (*T, error) {
 	}
 	verbose("request body size %d", len(reqObjJSON))
 
-	req, err := http.NewRequest(http.MethodPost, GitHubGraphqlURL, bytes.NewReader(reqObjJSON))
+	req, err := http.NewRequest(http.MethodPost, string(gh), bytes.NewReader(reqObjJSON))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -348,11 +298,12 @@ func ghGraphql[T any](query string, variables map[string]any) (*T, error) {
 	req.Header.Set("Content-Length", strconv.Itoa(len(reqObjJSON)))
 	req.Header.Set("Accept", "application/json")
 
-	if GitHubToken == "" {
-		return nil, fmt.Errorf("no github token specified")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+string(token))
 	}
-	req.Header.Set("Authorization", "Bearer "+GitHubToken)
-	req.Header.Set("User-Agent", cmp.Or(*UserAgent, DefaultUserAgent))
+	if UserAgent != "" {
+		req.Header.Set("User-Agent", UserAgent)
+	}
 
 	var buf []byte
 	for try := 1; ; try++ {
@@ -395,7 +346,7 @@ func ghGraphql[T any](query string, variables map[string]any) (*T, error) {
 				return nil, fmt.Errorf("response status %d, no retries left (try: %d, body: %q)", try, resp.StatusCode, buf)
 			}
 			retryAfter := time.Duration(float64(time.Second) * math.Pow(float64(try), 2))
-			fmt.Fprintf(os.Stderr, "warning: request failed, will retry after %s (response status %d, body %q)", retryAfter, resp.StatusCode, buf)
+			warning("request failed, will retry after %s (response status %d, body %q)", retryAfter, resp.StatusCode, buf)
 			<-time.After(retryAfter)
 			continue
 		}
@@ -414,7 +365,7 @@ func ghGraphql[T any](query string, variables map[string]any) (*T, error) {
 			Type    string `json:"type"`
 			Message string `json:"message"`
 		} `json:"errors"`
-		Data T `json:"data"`
+		Data json.RawMessage `json:"data"`
 	}
 	if err := json.Unmarshal(buf, &respObj); err != nil {
 		return nil, fmt.Errorf("parse response: %w", err)
@@ -427,5 +378,5 @@ func ghGraphql[T any](query string, variables map[string]any) (*T, error) {
 	if err := errors.Join(errs...); err != nil {
 		return nil, fmt.Errorf("github failed to create commit: %w", err)
 	}
-	return &respObj.Data, nil
+	return respObj.Data, nil
 }
