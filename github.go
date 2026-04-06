@@ -15,6 +15,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -31,9 +32,9 @@ type GitHubAPI string
 
 func (gh GitHubAPI) AppJWT(appID int64, key *rsa.PrivateKey) (GitHubToken, error) {
 	var jwt []byte
-	jwt = base64.RawURLEncoding.AppendEncode(jwt, []byte(`{"alg":"RS256","typ":"JWT"}`))
+	jwt = base64AppendEncode(base64.RawURLEncoding, jwt, []byte(`{"alg":"RS256","typ":"JWT"}`))
 	jwt = append(jwt, '.')
-	jwt = base64.RawURLEncoding.AppendEncode(jwt, []byte(`{`+
+	jwt = base64AppendEncode(base64.RawURLEncoding, jwt, []byte(`{`+
 		`"iat":`+strconv.FormatInt(time.Now().Add(-time.Minute).Unix(), 10)+
 		`,"exp":`+strconv.FormatInt(time.Now().Add(time.Minute*1).Unix(), 10)+
 		`,"iss":"`+strconv.FormatInt(appID, 10)+`"}`))
@@ -45,7 +46,7 @@ func (gh GitHubAPI) AppJWT(appID int64, key *rsa.PrivateKey) (GitHubToken, error
 	}
 
 	jwt = append(jwt, '.')
-	jwt = base64.RawURLEncoding.AppendEncode(jwt, sig)
+	jwt = base64AppendEncode(base64.RawURLEncoding, jwt, sig)
 	return GitHubToken(jwt), nil
 }
 
@@ -217,7 +218,7 @@ var _ json.Unmarshaler = (*Base64String)(nil)
 func (b Base64String) MarshalJSON() ([]byte, error) {
 	dst := make([]byte, 0, base64.StdEncoding.EncodedLen(len(b))+2)
 	dst = append(dst, '"')
-	dst = base64.StdEncoding.AppendEncode(dst, b)
+	dst = base64AppendEncode(base64.StdEncoding, dst, b)
 	dst = append(dst, '"')
 	return dst, nil
 }
@@ -379,4 +380,11 @@ func (gh GitHubGraphQL) query(token GitHubToken, query string, variables map[str
 		return nil, fmt.Errorf("github failed to create commit: %w", err)
 	}
 	return respObj.Data, nil
+}
+
+func base64AppendEncode(enc *base64.Encoding, dst, src []byte) []byte {
+	n := enc.EncodedLen(len(src))
+	dst = slices.Grow(dst, n)
+	enc.Encode(dst[len(dst):][:n], src)
+	return dst[:len(dst)+n]
 }

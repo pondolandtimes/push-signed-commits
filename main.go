@@ -1,7 +1,6 @@
 package main
 
 import (
-	"cmp"
 	"crypto/tls"
 	"errors"
 	"flag"
@@ -73,10 +72,16 @@ func main() {
 	)
 
 	var (
-		gh    = cmp.Or(GitHubAPI(os.Getenv(envGitHubApiURL)), DefaultGitHubAPI)
-		gql   = cmp.Or(GitHubGraphQL(os.Getenv(envGitHubGraphqlURL)), DefaultGitHubGraphQL)
+		gh    = DefaultGitHubAPI
+		gql   = DefaultGitHubGraphQL
 		token = GitHubToken(os.Getenv(envGitHubToken))
 	)
+	if u := os.Getenv(envGitHubApiURL); u != "" {
+		gh = GitHubAPI(u)
+	}
+	if u := os.Getenv(envGitHubGraphqlURL); u != "" {
+		gql = GitHubGraphQL(u)
+	}
 
 	var (
 		chdir = flag.String("C", "", "change to a different directory before running the command")

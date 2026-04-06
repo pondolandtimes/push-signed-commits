@@ -20,7 +20,7 @@ jobs:
           - windows-latest
           - macos-latest
         go:
-          - 1.22.x
+          - 1.21.x
           - stable
     runs-on: ${{ matrix.os }}
     steps:

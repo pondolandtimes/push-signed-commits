@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"cmp"
 	"fmt"
 	"os/exec"
 	"strconv"
@@ -46,7 +45,11 @@ func (o OID) Valid() bool {
 type Git string
 
 func (git *Git) LookPath() error {
-	p, err := exec.LookPath(cmp.Or(string(*git), "git"))
+	p := string(*git)
+	if p == "" {
+		p = "git"
+	}
+	p, err := exec.LookPath(p)
 	if err == nil {
 		*git = Git(p)
 	}
@@ -353,7 +356,11 @@ func parseVersion(v string) (major int, minor int, patch int, ok bool) {
 
 func (git Git) run(args ...string) ([]byte, error) {
 	debugcmd("git", args...)
-	buf, err := exec.Command(cmp.Or(string(git), "git"), args...).Output()
+	p := string(git)
+	if p == "" {
+		p = "git"
+	}
+	buf, err := exec.Command(p, args...).Output()
 	if err != nil {
 		err = fmt.Errorf("run %q: %w", "git"+fmtargs(args...), err)
 	}

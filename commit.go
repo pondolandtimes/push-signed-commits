@@ -1,7 +1,6 @@
 package main
 
 import (
-	"cmp"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
@@ -242,7 +241,10 @@ func Run(repo, branch string, opt Options) error {
 					Headline: subject,
 					Body:     body,
 				},
-				ExpectedHeadOid: cmp.Or(prevNewCommit, parent),
+				ExpectedHeadOid: parent,
+			}
+			if prevNewCommit != "" {
+				input.ExpectedHeadOid = prevNewCommit
 			}
 
 			files, err := opt.Git.CommitDiff(parent, commit)
