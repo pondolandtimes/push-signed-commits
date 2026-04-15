@@ -69,7 +69,7 @@ export const diffStatus = {
 // I've chosen to make the types a bit stronger than strictly required, but I
 // think it's nicer this way
 
-export const [minGitMajor, minGitMinor] = [2, 38]
+export const [minGitMajor, minGitMinor] = [2, 24] // 2019-11-04
 
 export class GitParseError extends Error {
   constructor(message: string) {
