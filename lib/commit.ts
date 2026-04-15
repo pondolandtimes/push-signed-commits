@@ -1,4 +1,4 @@
-import type { CommitOID, GitDiffEntry, Repo } from "./git.ts"
+import type { BlobOID, CommitOID, GitDiffEntry, Repo } from "./git.ts"
 import type { CreateCommitOnBranchInput, FileChanges } from "./github.ts"
 import { encodeBase64 } from "./github.ts"
 import { diffStatus, splitCommitMessage } from "./git.ts"
@@ -86,16 +86,8 @@ export async function changes(repo: Repo, diff: GitDiffEntry[], commit?: CommitO
       case diffStatus.added:
       case diffStatus.modified:
       case diffStatus.typeChanged:
-        const objs = commit
-          ? await repo.listTree(commit, file.path)
-          : await repo.listIndex(file.path)
-        /* node:coverage ignore next 3 */
-        if (objs.length !== 1) {
-          throw new Error(`Get tree object ${file.path}: expected exactly one non-tree object, got ${JSON.stringify(objs)}`)
-        }
-        const obj = objs[0]
         // git@v2.53.0/fsck.c:722-743
-        switch (obj.mode) {
+        switch (file.dst_mode) {
           /* node:coverage ignore next 2 */
           case 0o040000: // tree (directory)
             throw new Error(`WTF: Why did a recursive ls-tree/ls-files return a directory`)
@@ -110,21 +102,11 @@ export async function changes(repo: Repo, diff: GitDiffEntry[], commit?: CommitO
             throw new NotPushableError(commit, `contains a submodule`, file.path)
           /* node:coverage ignore next 2 */ // all known git objects covered
           default:
-            throw new NotPushableError(commit, `contains a non-regular (mode ${obj.mode}) file`, file.path)
+            throw new NotPushableError(commit, `contains a non-regular (mode ${file.dst_mode}) file`, file.path)
         }
-        /* node:coverage ignore next 8 */ // the above switch implies these cases for valid repos
-        switch (obj.type) {
-          case 'blob':
-            break // okay
-          case 'commit':
-            throw new NotPushableError(commit, `contains an added/modified submodule`, file.path)
-          default:
-            throw new NotPushableError(commit, `contains an added/modified unrecognized object of type ${obj.type} named`, file.path)
-        }
-        const buf = await repo.catFile(obj.name)
         additions.push({
-          path: obj.path,
-          contents: encodeBase64(buf),
+          path: file.path,
+          contents: encodeBase64(await repo.catFile(file.dst_oid as BlobOID)),
         })
         break
 

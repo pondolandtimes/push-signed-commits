@@ -117,8 +117,6 @@ export interface Repo {
   message: RepoFunc<typeof message>,
   diffStaged: RepoFunc<typeof diffStaged>,
   diffTrees: RepoFunc<typeof diffTrees>,
-  listIndex: RepoFunc<typeof listIndex>,
-  listTree: RepoFunc<typeof listTree>,
   catFile: RepoFunc<typeof catFile>,
 }
 
@@ -138,8 +136,6 @@ export async function repo(git: string, repo: string): Promise<Repo> {
     message: message.bind(null, git, gitDir),
     diffStaged: diffStaged.bind(null, git, gitDir),
     diffTrees: diffTrees.bind(null, git, gitDir),
-    listIndex: listIndex.bind(null, git, gitDir),
-    listTree: listTree.bind(null, git, gitDir),
     catFile: catFile.bind(null, git, gitDir),
   }
 }
@@ -202,6 +198,10 @@ export async function message(git: string, repo: string, commit: Committish): Pr
 }
 
 export type GitDiffEntry = {
+  src_mode: number,
+  dst_mode: number,
+  src_oid: OID,
+  dst_oid: OID,
   status: GitDiffStatus,
   path: string,
 }
@@ -211,12 +211,12 @@ export async function diffStaged(git: string, repo: string, tree: Treeish): Prom
     'diff-index',       // low-level tree diff
     '-z',               // null-terminated
     '-r',               // recurse into trees (and don't return the trees themselves)
-    '--name-status',    // only status and paths
+    '--raw',            // raw format
     '--cached',         // only index (i.e.,  staging area), not working tree files
     '--end-of-options', // no more options
     tree,               // target
   )
-  return parseDiff(out)
+  return parseRawDiff(out)
 }
 
 export async function diffTrees(git: string, repo: string, a: Treeish, b: Treeish): Promise<GitDiffEntry[]> {
@@ -224,106 +224,48 @@ export async function diffTrees(git: string, repo: string, a: Treeish, b: Treeis
     'diff-tree',        // low-level tree diff
     '-z',               // null-terminated
     '-r',               // recurse into trees (and don't return the trees themselves)
-    '--name-status',    // only status and paths
+    '--raw',            // raw format
     '--end-of-options', // no more options
     a, b,               // trees
   )
-  return parseDiff(out)
+  return parseRawDiff(out)
 }
 
-async function parseDiff(out: GitOutput): Promise<GitDiffEntry[]> {
+/** Parse a null-terminated raw diff (see combine_diff.c show_raw_diff). */
+async function parseRawDiff(out: GitOutput): Promise<GitDiffEntry[]> {
+  // ':' srcmode SP dstmode SP srcoid SP dstoid SP status [ NUL src ] NUL dst NUL
+  // we didn't ask for copy or rename detection, so we should only ever have one path
   const diff = []
-  for (const status of out) {
+  for (const info of out) {
+    if (!info.startsWith(':')) {
+      // this would only happen if the output was bad or it gave us a rename/copy
+      throw new GitParseError(json`Expected next diff entry, but got ${info}`)
+    }
     const path = out.next()
     if (path.done) {
-      throw new GitParseError(json`Expected path after diff status ${status}`)
+      throw new GitParseError(json`Expected path for diff entry ${info}`)
     }
+    const spl = info.slice(1).split(' ')
+    if (spl.length != 5) {
+      throw new GitParseError(json`Invalid diff entry ${info} (bad field count)`)
+    }
+    const [src_mode, dst_mode, src_oid, dst_oid, status] = spl
+    if (!isOctal(src_mode) || !isOctal(dst_mode)) {
+      throw new GitParseError(json`Invalid diff entry ${info} (invalid mode)`)
+    }
+    parseOID(src_oid)
+    parseOID(dst_oid)
     parseDiffStatus(status, path.value)
     diff.push({
-      status: status,
+      src_mode: parseInt(src_mode, 8),
+      dst_mode: parseInt(dst_mode, 8),
+      src_oid,
+      dst_oid,
+      status,
       path: path.value,
     })
   }
   return diff
-}
-
-export type GitTreeEntry = {
-  [T in GitObjectType]: {
-    type: T,
-    mode: number,
-    name: TypedOID<T>,
-    size: number,
-    path: string,
-  }
-}[GitObjectType]
-
-export async function listIndex(git: string, repo: string, path: string): Promise<GitTreeEntry[]> {
-  const out = await run(false, git, repo,
-    'ls-files',                    // information about a tree object in the index and working directory
-    '-z',                          // null terminated
-    '--cached',                    // only index (i.e.,  staging area), not working tree files
-    `--format=${parseTreeFormat}`, // fields
-    '--end-of-options',            // escape
-    path,                          // path
-  )
-  return parseTree(out, false)
-}
-
-export async function listTree(git: string, repo: string, tree: TreeishOID, path: string): Promise<GitTreeEntry[]> {
-  const out = await run(false, git, repo,
-    'ls-tree',                     // information about a tree object in the repository
-    '-z',                          // null terminated
-    `--format=${parseTreeFormat}`, // fields
-    '--end-of-options',            // escape
-    tree,                          // tree object
-    path,                          // path
-  )
-  return parseTree(out, true)
-}
-
-const parseTreeFormat = `%(objecttype)%x00%(objectmode)%x00%(objectname)%x00%(objectsize)%x00%(path)`
-
-function parseTree(out: GitOutput, quoted: boolean): GitTreeEntry[] {
-  const ent = []
-  for (const type of out) {
-    parseType(type)
-    const modeStr = out.next()
-    if (modeStr.done) {
-      throw new GitParseError(json`Expected mode after tree entry type ${type}`)
-    }
-    const mode = parseInt(modeStr.value, 8)
-    if (isNaN(mode) || !Number.isInteger(mode)) {
-      throw new GitParseError(json`Invalid mode ${modeStr}`)
-    }
-    const name = out.next()
-    if (name.done) {
-      throw new GitParseError(json`Expected mode after tree entry mode ${modeStr}`)
-    }
-    parseOID<TypedOID<any>>(name.value)
-    const sizeStr = out.next()
-    if (sizeStr.done) {
-      throw new GitParseError(json`Expected mode after tree entry name ${name}`)
-    }
-    const size = sizeStr.value === '-' ? -1 : parseInt(sizeStr.value, 10)
-    if (isNaN(size) || !Number.isInteger(size)) {
-      throw new GitParseError(json`Invalid size ${sizeStr}`)
-    }
-    const path = out.next()
-    if (path.done) {
-      throw new GitParseError(json`Expected mode after tree size ${sizeStr}`)
-    }
-    ent.push({
-      type: type,
-      mode: mode,
-      name: name.value,
-      size: size,
-      // git ls-tree always quotes it with --format (quote_c_style in
-      // show_tree_fmt) even if core.quotePath is disabled and/or -z is
-      // specified (ls-files doesn't)
-      path: (quoted && path.value.includes('"')) ? unquote(path.value) : path.value,
-    })
-  }
-  return ent
 }
 
 export async function catFile(git: string, repo: string, oid: BlobOID): Promise<Buffer> {
@@ -389,14 +331,6 @@ const diffStatusSet: Set<string> = new Set(Object.values(diffStatus))
 function parseDiffStatus(status: string, path?: string | undefined): asserts status is GitDiffStatus {
   if (!diffStatusSet.has(status)) {
     throw new GitParseError(json`Invalid diff status ${status}` + (path ? json`for file ${path}` : ''))
-  }
-}
-
-const objectTypeSet: Set<string> = new Set(Object.values(objectType))
-
-function parseType(type: string, path?: string | undefined): asserts type is GitObjectType {
-  if (!objectTypeSet.has(type)) {
-    throw new GitParseError(json`Invalid object type ${type}` + (path ? json`for file ${path}` : ''))
   }
 }
 
@@ -488,6 +422,16 @@ function isSpaceASCII(s: string): boolean {
   return true
 }
 
+function isOctal(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i)
+    if (!((c >= 48 && c <= 55))) {
+      return false
+    }
+  }
+  return true
+}
+
 function isLowerHex(s: string): boolean {
   for (let i = 0; i < s.length; i++) {
     const c = s.charCodeAt(i)
@@ -498,49 +442,10 @@ function isLowerHex(s: string): boolean {
   return true
 }
 
-/** Unquote a double-quoted C string. */
-function unquote(str: string): string {
-  if (!str.startsWith('"') || !str.endsWith('"')) {
-    throw new GitParseError(json`Expected ${str} to be quoted by git, but it wasn't`)
-  }
-  str = str.slice(1, -1)
-  const bytes: number[] = []
-  for (let i = 0; i < str.length; ) {
-    if (str[i] !== '\\') {
-      bytes.push(str.charCodeAt(i++))
-    } else {
-      const e = str[i + 1]
-      if (e >= '0' && e <= '7') {
-        let j = i + 1
-        while (j < i + 4 && j < str.length && str[j] >= '0' && str[j] <= '7') j++
-        bytes.push(parseInt(str.slice(i + 1, j), 8))
-        i = j
-      } else {
-        switch (e) {
-          case '\\': bytes.push(0x5c); break
-          case '/':  bytes.push(0x2f); break
-          case '"':  bytes.push(0x22); break
-          case 'a':  bytes.push(0x07); break
-          case 'b':  bytes.push(0x08); break
-          case 'f':  bytes.push(0x0c); break
-          case 'n':  bytes.push(0x0a); break
-          case 'r':  bytes.push(0x0d); break
-          case 't':  bytes.push(0x09); break
-          case 'v':  bytes.push(0x0b); break
-          default:   bytes.push(e.charCodeAt(0)); break
-        }
-        i += 2
-      }
-    }
-  }
-  return Buffer.from(bytes).toString('utf-8')
-}
-
 export const __test = {
   trimBlankLinesStart,
   trimBlankLinesEnd,
   cutBlankLine,
-  unquote,
 }
 
 function json(strings: TemplateStringsArray, ...values: any[]) {

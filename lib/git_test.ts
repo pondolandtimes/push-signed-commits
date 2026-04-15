@@ -12,7 +12,7 @@ export type FastImportFile =
   | { path: string }
 
 // printf '%s\n' 'commit refs/test/dummy' 'mark :1' 'committer T <t@t> 999999999 +0000' 'data 7' 'dummy' '' | git fast-import --quiet && git rev-parse refs/test/dummy && git update-ref -d refs/test/dummy`
-export const dummy = 'b7a2e2769a0479f89efa4c42b1eef1a5ca8dedb3' // for testing gitlinks
+export const dummy = 'b7a2e2769a0479f89efa4c42b1eef1a5ca8dedb3' as git.CommitOID // for testing gitlinks
 
 export class FastImport {
   private chunks: Buffer[] = []
@@ -124,6 +124,12 @@ export class TempRepo implements Disposable {
     const r = spawnSync('git', ['-C', this.path, 'rev-parse', '--verify', rev], { encoding: 'utf-8' })
     if (r.status !== 0) throw new Error(`git rev-parse ${rev}: ${r.stderr}`)
     return r.stdout.trim() as git.TypedOID<T>
+  }
+
+  treeFile(tree: git.Treeish, path: string): git.OID {
+    const r = spawnSync('git', ['-C', this.path, 'ls-tree', '--object-only', '--end-of-options', tree, path], { encoding: 'utf-8' })
+    if (r.status !== 0) throw new Error(`git ls-tree ${tree} ${path}: ${r.stderr}`)
+    return r.stdout.trim() as git.OID
   }
 
   [Symbol.dispose](): void {
