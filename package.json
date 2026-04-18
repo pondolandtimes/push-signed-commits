@@ -1,6 +1,6 @@
 {
   "name": "push-signed-commits",
-  "private": true,
+  "version": "0.0.0",
   "type": "module",
   "main": "lib/action.ts",
   "engines": {

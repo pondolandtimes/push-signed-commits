@@ -7,6 +7,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     strategy:
@@ -42,4 +45,4 @@ jobs:
       - uses: ./
         with:
           dry-run: true # don't actually push anything
-          revision: HEAD^^^..HEAD # last 3 commits
+          revision: 8e08c6cc1889ff1e055a22cd447d3fe8b0517dc7..4943602fa12f897d889eb6a7db0f9f37233c0076
