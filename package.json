@@ -17,7 +17,7 @@
     "url": "https://github.com/pgaskin/push-signed-commits"
   },
   "type": "module",
-  "main": "lib/action.ts",
+  "main": "lib/index.ts",
   "engines": {
     "node": ">= 24"
   },
