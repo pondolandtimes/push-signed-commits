@@ -30,6 +30,9 @@ async function defaultUserAgent(): Promise<string> {
   const json = await readFile(join(import.meta.dirname, '..', 'package.json'))
   const pkg = JSON.parse(json.toString('utf-8'))
   let ua = `${pkg.name}`
+  if (pkg.version) {
+    ua += `/${pkg.version}`
+  }
 
   const orch = env['ACTIONS_ORCHESTRATION_ID']
   if (orch) {
