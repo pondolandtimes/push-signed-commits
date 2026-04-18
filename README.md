@@ -40,22 +40,22 @@ npm install --save push-signed-commits@v0.0.10
 #### Inputs
 
 ```yaml
-- run: pgaskin/push-signed-commits@v0.0.10
+- uses: pgaskin/push-signed-commits@v0.0.10
   with:
+
     # The local repository path relative to the current directory. If you change
     # this, you probably also want to change the 'repository' and 'branch'.
     path: ''
 
-    # The target repository username/name. You will usually want to use
-    # ${{github.repository}} unless you're pushing to a different one. This does
-    # not need to match the local repo upstream. If not on the same GitHub
+    # The target repository username/name if not the same as the workflow. This
+    # does not need to match the local repo upstream. If not on the same GitHub
     # server as the workflow, you need to override the GITHUB_API_URL and
     # GITHUB_GRAPHQL_URL environment variables.
     repository: ${{ github.repository }}
 
-    # The target branch name, optionally including the 'refs/heads/' prefix.
-    # This does not need to match the local repo branch. You cannot push to
-    # tags.
+    # The target branch name if not the same as the workflow ref, optionally
+    # including the 'refs/heads/' prefix. This does not need to match the local
+    # repo branch. You cannot push to tags.
     branch: ${{ github.ref }}
 
     # The commit or commit range to push to the remote. If you want to push the
@@ -95,7 +95,8 @@ npm install --save push-signed-commits@v0.0.10
 
     # GitHub GraphQL API URL. If not set, it will be set from GITHUB_GRAPHQL_URL
     # to be the same as the one where the workflow is running from (e.g.,
-    # https://api.github.com/graphql or https://my-ghes-server.example.com/api/graphql).
+    # https://api.github.com/graphql or
+    # https://my-ghes-server.example.com/api/graphql).
     github-graphql-url: ''
 
     # Authenticate as a GitHub App with the specified ID. The installation ID
@@ -119,11 +120,11 @@ npm install --save push-signed-commits@v0.0.10
   still be set to the ones pushed so far) since they contained unpushable
   content.
 
-- `commit-oids`
+- `pushed-oids`
   The new commit hash of all commits pushed, space-separated. On failure, it
   contains the ones pushed so far. Not set if 'dry-run'.
 
-- `commit-oid`
+- `pushed-oid`
   The new commit hash of the last commit pushed, or an empty string if no
   commits were pushed. On failure, it contains the ones pushed so far. Not
   set if 'dry-run'.
