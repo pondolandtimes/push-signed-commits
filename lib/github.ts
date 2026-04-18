@@ -4,6 +4,7 @@ import { createSign } from 'node:crypto'
 import { env } from 'node:process'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { styleText } from 'node:util'
 
 /** A GitHub token. */
 export type GitHubToken = string & { __token: true }
@@ -130,13 +131,11 @@ async function request(gh: GitHubApiUrl, token: GitHubToken, method: string, pat
   }
 
   try {
-    const resp = await fetch(url, {
+    return await fetchRetry(url, {
       method,
       headers,
       body,
     })
-    const text = await resp.text()
-    return [resp, text]
   } catch (err) {
     throw new Error(`${method} ${url}: ${err}`)
   }
@@ -181,7 +180,7 @@ export function encodeBase64(buf: Buffer): Base64String {
   return buf.toString('base64') as Base64String
 }
 
-let lastGraphqlMutationRequest: number | undefined
+const commitThrottle = throttle(1000) // according to the GitHub recommendations for throttling content-generating requests
 
 /** Create a commit using the GitHub GraphQL API. */
 export async function createCommitOnBranch(gh: GitHubGraphqlUrl, token: GitHubToken, input: CreateCommitOnBranchInput): Promise<GitObjectID> {
@@ -208,64 +207,36 @@ export async function createCommitOnBranch(gh: GitHubGraphqlUrl, token: GitHubTo
     },
   })
 
-  let obj
-  for (let tries = 1; ; tries++) {
-    if (lastGraphqlMutationRequest) {
-      const elapsed = Date.now() - lastGraphqlMutationRequest
-      if (elapsed < 1000) {
-        await new Promise(resolve => setTimeout(resolve, 1000 - elapsed))
-      }
-    }
-    lastGraphqlMutationRequest = Date.now()
+  await commitThrottle()
 
-    let resp, text
-    try {
-      resp = await fetch(url, {
-        method,
-        headers,
-        body,
-      })
-      text = await resp.text()
-    } catch (err) {
-      throw new Error(`${method} ${url}: ${err}`)
-    }
+  const [resp, text] = await fetchRetry(url, {
+    method,
+    headers,
+    body,
+  })
 
-    if (resp.status >= 400) {
-      switch (resp.status) {
-        case 400: case 401: case 403: case 404: case 410: case 422: case 451:
-          throw new Error(json`Non-retryable response status ${resp.status} (try: ${tries}, body: ${text})`)
-      }
-      if (tries > 3) {
-        throw new Error(json`Retryable response status ${resp.status}, but no retries left (try: ${tries}, body: ${text})`)
-      }
-      const retryAfter = (tries ** 2) * 1000
-      await new Promise(resolve => setTimeout(resolve, retryAfter))
-      continue
+  const mt = resp.headers.get('Content-Type') ?? ''
+  if (!mt.startsWith('application/json')) {
+    if (resp.status !== 200) {
+      throw new Error(json`Response status ${resp.status} (body: ${text})`)
     }
+    throw new Error(json`Incorrect response type ${mt}`)
+  }
 
-    const mt = resp.headers.get('Content-Type') ?? ''
-    if (!mt.startsWith('application/json')) {
-      if (resp.status !== 200) {
-        throw new Error(json`Response status ${resp.status} (body: ${text})`)
-      }
-      throw new Error(json`Incorrect response type ${mt}`)
-    }
-
-    obj = JSON.parse(text) as {
-      errors?: {
-        type: string,
-        message: string,
-      }[],
-      data?: {
-        createCommitOnBranch: {
-          commit: {
-            oid: GitObjectID,
-          },
+  const obj = JSON.parse(text) as {
+    errors?: {
+      type: string,
+      message: string,
+    }[],
+    data?: {
+      createCommitOnBranch: {
+        commit: {
+          oid: GitObjectID,
         },
       },
-    }
-    break
+    },
   }
+
   if (obj?.errors?.length) {
     for (const err of obj.errors) {
       if (err?.message?.includes('No commit exists with specified expectedHeadOid')) {
@@ -282,6 +253,90 @@ export async function createCommitOnBranch(gh: GitHubGraphqlUrl, token: GitHubTo
     throw new Error(json`GitHub created the commit but didn't return the oid`)
   }
   return obj?.data?.createCommitOnBranch?.commit?.oid
+}
+
+export interface RetryOptions {
+  maxRetries?: number,
+}
+
+/**
+ * Like fetch, but retries GitHub API requests using similar logic to
+ * @octokit/plugin-throttling and @octokit/plugin-retry.
+ */
+export async function fetchRetry(url: URL, init: RequestInit, opt?: RetryOptions): Promise<[Response, string]> {
+  const maxRetries = opt?.maxRetries ?? 3 // like @octokit/plugin-retry
+  const doNotRetry = new Set([400, 401, 403, 404, 410, 422, 451]) // like @octokit/plugin-retry
+
+  for (let attempt = 1; ; attempt++) {
+    const prefix = `${init.method ?? 'GET'} ${url} (attempt ${attempt})`
+    let resp: Response | undefined
+    let isRetryable = false
+    let isSecondaryRateLimit = false
+    try {
+      resp = await fetch(url, init)
+      const text = await resp.text()
+
+      if (resp.status >= 400) {
+        if (text.includes('secondary rate')) { // like @octokit/plugin-throttling
+          isRetryable = true
+          isSecondaryRateLimit = true
+          throw new Error(json`hit secondary rate limit (body: ${text})`)
+        }
+        if (!doNotRetry.has(resp.status)) { // like @octokit/plugin-retry
+          isRetryable = true
+        }
+        if (resp.headers.get('x-ratelimit-remaining') == '0' && (resp.status == 403 || resp.status == 429)) {
+          throw new Error(json`hit rate limit (body: ${text})`)
+        }
+        throw new Error((isRetryable ? `` : `non-retryable `) + json`reponse status ${resp.status} (body: ${text})`)
+      }
+
+      return [resp, text] as const
+    } catch (err) {
+      if (!isRetryable || attempt > maxRetries) {
+        throw new Error(`${prefix}: ${err instanceof Error ? err.message : err}`)
+      }
+
+      const retryAfter = resp?.headers.get('Retry-After')
+      if (retryAfter) {
+        let delay = (/^\d+$/.test(retryAfter)
+          ? Math.max(0, parseInt(retryAfter, 10) * 1000)
+          : Math.max(0, new Date(retryAfter).getTime() - Date.now()) + 1000)
+        console.log(styleText(['dim', 'yellow'], `${prefix}: retrying failed (${err}) request after ${delay}ms (retry-after)`))
+        await new Promise(resolve => setTimeout(resolve, delay))
+        continue
+      }
+
+      const rateLimitReset = resp?.headers.get('x-ratelimit-reset')
+      if (rateLimitReset) {
+        const delay = Math.max(0, parseInt(rateLimitReset) * 1000 - Date.now())
+        console.log(styleText(['dim', 'yellow'], `${prefix}: retrying failed (${err}) request after ${delay}ms (x-ratelimit-reset)`))
+        await new Promise(resolve => setTimeout(resolve, delay))
+        continue
+      }
+
+      const delay = isSecondaryRateLimit ? 60000 : (attempt ** 2) * 1000
+      console.log(styleText(['dim', 'yellow'], `${prefix}: retrying failed (${err}) request after ${delay}ms`))
+      await new Promise(resolve => setTimeout(resolve, delay))
+      continue
+    }
+  }
+}
+
+/**
+ * Returns a promise which resolves at most once every interval.
+ */
+function throttle(interval: number): () => Promise<void> {
+  let last: number | undefined
+  return async () => {
+    if (last) {
+      const elapsed = Date.now() - last
+      if (elapsed < interval) {
+        await new Promise(resolve => setTimeout(resolve, interval - elapsed))
+      }
+    }
+    last = Date.now()
+  }
 }
 
 function json(strings: TemplateStringsArray, ...values: any[]) {
