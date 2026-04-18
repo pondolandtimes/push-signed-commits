@@ -15,14 +15,14 @@ Create verified/signed commits as bots or GitHub Actions.
 
 ```yaml
 # with the github actions token
-- uses: pgaskin/push-signed-commits@v0.0.10
+- uses: pgaskin/push-signed-commits@v0.0.11
   with:
     commit-message: commit message
 ```
 
 ```yaml
 # with a github app installation token
-- uses: pgaskin/push-signed-commits@v0.0.10
+- uses: pgaskin/push-signed-commits@v0.0.11
   with:
     path: other-repo
     repository: username/other-repo
@@ -40,7 +40,7 @@ npm install --save push-signed-commits@v0.0.10
 #### Inputs
 
 ```yaml
-- uses: pgaskin/push-signed-commits@v0.0.10
+- uses: pgaskin/push-signed-commits@v0.0.11
   with:
 
     # The local repository path relative to the current directory. If you change
@@ -144,7 +144,7 @@ npm install --save push-signed-commits@v0.0.10
 #### Create and push a commit if there are staged changes
 
 ```yaml
-- uses: pgaskin/push-signed-commits@v0.0.10
+- uses: pgaskin/push-signed-commits@v0.0.11
   with:
     commit-message: |
       commit message subject
@@ -155,13 +155,13 @@ npm install --save push-signed-commits@v0.0.10
 #### Create and push all commits on the current branch since the last pull
 
 ```yaml
-- uses: pgaskin/push-signed-commits@v0.0.10
+- uses: pgaskin/push-signed-commits@v0.0.11
 ```
 
 #### Create and push all commits on the current branch since the last pull, then fetch the created commits
 
 ```yaml
-- uses: pgaskin/push-signed-commits@v0.0.10
+- uses: pgaskin/push-signed-commits@v0.0.11
   id: push
 - run: git fetch @{u} && git reset --soft ${{ steps.push.outputs.commit-oid }}
   if: steps.push.outputs.commit-oid != ''
@@ -172,7 +172,7 @@ npm install --save push-signed-commits@v0.0.10
 The app must have `contents:write` permission. The private key can be base64-encoded or newline-escaped.
 
 ```yaml
-- uses: pgaskin/push-signed-commits@v0.0.10
+- uses: pgaskin/push-signed-commits@v0.0.11
   with:
     path: other-repo
     repository: username/other-repo

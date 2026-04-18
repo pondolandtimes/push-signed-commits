@@ -1,6 +1,6 @@
 {
   "name": "push-signed-commits",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "license": "MIT",
   "description": "create verified/signed commits as a GitHub App",
   "keywords": [
