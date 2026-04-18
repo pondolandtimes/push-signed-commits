@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process'
 
 console.log(`Parsing package.json`)
 const obj = JSON.parse(readFileSync('package.json', 'utf-8'))
-const repo = obj.repository?.url?.replace(/^https:\/\/github\.com\//, '').replace(/\.git$/, '') ?? ''
+const repo = obj.repository?.url?.replace(/^(git\+)?https:\/\/github\.com\//, '').replace(/\.git$/, '') ?? ''
 
 console.log("Parsing inputs/outputs from action.yml")
 const action: Record<'inputs' | 'outputs', Record<string, { lines: string[], default?: string }>> = { inputs: {}, outputs: {} }
@@ -49,9 +49,14 @@ console.log(`Releasing ${repo}@${version}`)
 
 console.log("Updating README")
 let readme = readFileSync('README.md', 'utf-8')
-if (!(new RegExp(`${repo}@v`, 'i')).test(readme)) throw new Error(`No version references found in README`)
-readme = readme.replace(new RegExp(`(${repo}@)${versionRe}`, 'gi'), `$1${version}`)
-readme = readme.replace(new RegExp(`(${repo}@)v[0-9]+(?![.][0-9])`, 'gi'), `$1${version.split('.')[0]}`)
+if (!(new RegExp(`${repo}@v`, 'i')).test(readme)) throw new Error(`No action references found in README`)
+if (!(new RegExp(`${obj.name}@v`, 'i')).test(readme)) throw new Error(`No npm package references found in README`)
+readme = readme.replace(new RegExp(`(${repo}@)${versionRe}`, 'gi'), `$1${version}`) // action vX.Y.Z
+readme = readme.replace(new RegExp(`(${repo}@)v[0-9]+(?![.][0-9])`, 'gi'), `$1${version.split('.')[0]}`) // action vX
+readme = readme.replace(new RegExp(`(?<!/)(${obj.name}@)${versionRe}`, 'gi'), `$1${version}`) // npm vX.Y.Z
+readme = readme.replace(new RegExp(`(?<!/)(${obj.name}@)v[0-9]+(?![.][0-9])`, 'gi'), `$1${version.split('.')[0]}`) // npm vX
+readme = readme.replace(new RegExp(`(?<!/)(${obj.name}@)${versionRe.slice(1)}`, 'gi'), `$1${version.slice(1)}`) // npm X.Y.Z
+readme = readme.replace(new RegExp(`(?<!/)(${obj.name}@)[0-9]+(?![.][0-9])`, 'gi'), `$1${version.split('.')[0].slice(1)}`) // npm X
 if (!readme.includes('#### Inputs\n')) throw new Error('Inputs section not found in README')
 if (!readme.includes('#### Outputs\n')) throw new Error('Outputs section not found in README')
 readme = readme.replace(/(#### Inputs\n\n)```yaml\n[\s\S]*?```/, `$1\`\`\`yaml\n${[

@@ -32,7 +32,7 @@ Create verified/signed commits as bots or GitHub Actions.
 
 ```bash
 # as a library
-npm install --save push-signed-commits@v0.0.10
+npm install --save push-signed-commits@v0.0.11
 ```
 
 ### Usage
