@@ -30,14 +30,12 @@ async function defaultUserAgent(): Promise<string> {
   const json = await readFile(join(import.meta.dirname, '..', 'package.json'))
   const pkg = JSON.parse(json.toString('utf-8'))
   let ua = `${pkg.name}`
-  if (env['GITHUB_ACTIONS']) {
-    ua += ' github-actions (' + [
-      `runner-environment=${env['RUNNER_ENVIRONMENT']}`,
-      `action=${env['GITHUB_ACTION']}`,
-      `run-id=${env['GITHUB_RUN_ID']}`,
-      `actor-id=${env['GITHUB_ACTOR_ID']}`,
-    ].join('; ') + ')'
+
+  const orch = env['ACTIONS_ORCHESTRATION_ID']
+  if (orch) {
+    ua += ` actions_orchestration_id/${orch.replace(/[^a-z0-9_.-]/gi, '_')}`
   }
+
   return ua
 }
 
