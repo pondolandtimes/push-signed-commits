@@ -8,9 +8,11 @@ lib/
   git_test.ts  - git fast-import wrapper and utils for tests
   github.ts    - minimal github api client
   commit.ts    - creates createCommitOnBranch inputs
-  action.ts    - github actions entry point
-  main.ts      - cli entry point
+  main.ts      - command implementation
   index.ts     - library entry point (re-exports/wraps a stable subset of the other files)
+  action.ts    - github actions entry point
+  cli.ts       - cli entry point
+  options.ts   - cli argument parser
 scripts/
   release.ts   - updates versions and documentation for releases
 ```

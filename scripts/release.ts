@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
+import { usage } from '../lib/cli.ts'
 
 console.log(`Parsing package.json`)
 const obj = JSON.parse(readFileSync('package.json', 'utf-8'))
@@ -59,6 +60,7 @@ readme = readme.replace(new RegExp(`(?<!/)(${obj.name}@)${versionRe.slice(1)}`, 
 readme = readme.replace(new RegExp(`(?<!/)(${obj.name}@)[0-9]+(?![.][0-9])`, 'gi'), `$1${version.split('.')[0].slice(1)}`) // npm X
 if (!readme.includes('#### Inputs\n')) throw new Error('Inputs section not found in README')
 if (!readme.includes('#### Outputs\n')) throw new Error('Outputs section not found in README')
+if (!readme.includes('#### CLI\n')) throw new Error('CLI section not found in README')
 readme = readme.replace(/(#### Inputs\n\n)```yaml\n[\s\S]*?```/, `$1\`\`\`yaml\n${[
   `- uses: ${repo}@${version}\n  with:`,
   ...Object.entries(action.inputs).map(([k, v]) => [
@@ -66,12 +68,13 @@ readme = readme.replace(/(#### Inputs\n\n)```yaml\n[\s\S]*?```/, `$1\`\`\`yaml\n
     `    ${k}: ${/^(true|false|\d+|\$\{\{.+\}\})$/.test(v.default ?? '') ? v.default : `'${v.default ?? ''}'`}`,
   ].join('\n')),
 ].join('\n\n').replaceAll('$', '$$')}\n\`\`\``)
-readme = readme.replace(/(#### Outputs\n\n)([\s\S]*?)(\n### )/, `$1${[
+readme = readme.replace(/(#### Outputs\n\n)([\s\S]*?)(\n#### )/, `$1${[
   ...Object.entries(action.outputs).map(([k, v]) => [
     `- \`${k}\``,
     ...v.lines.map(l => '  ' + l),
   ].join('\n')),
 ].join('\n\n').replaceAll('$', '$$')}\n$3`)
+readme = readme.replace(/(#### CLI\n\n)```\n[\s\S]*?```/, `$1\`\`\`\n${usage(`npx -y ${obj.name}@${version}`).trimEnd().replaceAll('$', '$$')}\n\`\`\``)
 writeFileSync('README.md', readme)
 
 console.log("Updating package.json version")

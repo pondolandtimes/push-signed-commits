@@ -3,7 +3,7 @@
 Create verified/signed commits as bots or GitHub Actions.
 
 - Zero dependencies, cross-platform.
-- Available as a GitHub Action or library.
+- Available as a GitHub Action, standalone CLI, or library.
 - Uses an existing commit, a range of commits, or a new commit with staged changes.
 - Commits will be authored by the owner of the token.
 - Commits will be signed and committed by GitHub.
@@ -28,6 +28,18 @@ Create verified/signed commits as bots or GitHub Actions.
     repository: username/other-repo
     branch: master
     commit-message: commit message
+    app-id: ${{ vars.app_id }}
+    app-key: ${{ secrets.app_private_key }}
+```
+
+```bash
+# with a github token (cli)
+GITHUB_TOKEN=github_pat_xxx npx -y push-signed-commits@v0.0.11 -m 'commit message'
+```
+
+```bash
+# with a github app installation token (cli)
+APP_PRIVATE_KEY="$(< private.pem)" npx -y push-signed-commits@v0.0.11 -C other-repo -m 'commit message' --app 1234 username/other-repo master
 ```
 
 ```bash
@@ -80,7 +92,7 @@ npm install --save push-signed-commits@v0.0.11
     user-agent: ''
 
     # Do not validate SSL certificates when making GitHub API requests.
-    insecure-skip-verify: false
+    insecure: false
 
     # Do not push commits, just print the mutations which would be made.
     dry-run: false
@@ -139,6 +151,30 @@ npm install --save push-signed-commits@v0.0.11
   ones in commit-oids. Not set if creating a new commit from the staging
   area. Still set if 'dry-run'.
 
+#### CLI
+
+```
+usage: npx -y push-signed-commits@v0.0.11 [options] username/repository target_branch [revision]
+
+  -C STRING                                                    repository path (default ".")
+      --allow-empty                                            create en empty commit even if there are no changes
+  -m, --message STRING                                         commit message to use if creating a new commit from the staging area
+  -F, --file STRING                                            read the commit message from the specified (overrides --message)
+  -A, --user-agent STRING                                      override the user agent for GitHub API requests
+  -k, --insecure                                               do not validate check tls certificates for GitHub API requests
+  -n, --dry-run                                                do not actually push commits, just print the mutations
+      --github-token STRING, $GITHUB_TOKEN=STRING              github token with contents:write permission
+      --github-api-url STRING, $GITHUB_API_URL=STRING          github api url (default "https://api.github.com")
+      --github-grqphql-url STRING, $GITHUB_GRAPHQL_URL=STRING  github graphql api url (default "https://api.github.com/graphql")
+      --app INTEGER                                            authenticate as a github app with the specified id (overrides --github-token)
+      --app-key STRING                                         the private key to use if authenticating as a github app (can be base64-encoded or contain escaped newlines)
+      --git STRING                                             the git binary to use (default "git")
+  -h, --help                                                   show this help text
+
+revision is a commit or range of commits (see man gitrevisions(7))
+if not specified, a commit is created from the staging area
+```
+
 ### Examples
 
 #### Create and push a commit if there are staged changes
@@ -152,18 +188,30 @@ npm install --save push-signed-commits@v0.0.11
       commit message body
 ```
 
+```bash
+GITHUB_TOKEN=github_pat_xxx npx -y push-signed-commits@v0.0.11 -m $'commit message subject\n\ncommit message body' username/repo master
+```
+
 #### Create and push all commits on the current branch since the last pull
 
 ```yaml
 - uses: pgaskin/push-signed-commits@v0.0.11
+  with:
+    revision: HEAD@{u}..HEAD
+```
+
+```bash
+GITHUB_TOKEN=github_pat_xxx npx -y push-signed-commits@v0.0.11 username/repo master HEAD@{u}..HEAD
 ```
 
 #### Create and push all commits on the current branch since the last pull, then fetch the created commits
 
 ```yaml
 - uses: pgaskin/push-signed-commits@v0.0.11
+  with:
+    revision: HEAD@{u}..HEAD
   id: push
-- run: git fetch @{u} && git reset --soft ${{ steps.push.outputs.commit-oid }}
+- run: git fetch @{u} && git reset --soft ${{ steps.push.outputs.pushed-oid }}
   if: steps.push.outputs.commit-oid != ''
 ```
 
@@ -180,6 +228,11 @@ The app must have `contents:write` permission. The private key can be base64-enc
     revision: HEAD
     app-id: 1234
     app-key: ${{ secrets.app_private_key }}
+```
+
+```bash
+# with a github app installation token (cli)
+APP_PRIVATE_KEY="$(< private.pem)" npx -y push-signed-commits@v0.0.11 -C other-repo --app 1234 username/other-repo master HEAD
 ```
 
 #### Library

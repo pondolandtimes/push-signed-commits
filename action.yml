@@ -51,7 +51,7 @@ inputs:
   user-agent:
     description:
       Override the user agent used to make GitHub API requests.
-  insecure-skip-verify:
+  insecure:
     description:
       Do not validate SSL certificates when making GitHub API requests.
     default: false

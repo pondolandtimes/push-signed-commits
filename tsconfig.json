@@ -1,31 +1,14 @@
 {
-  // node 24.x
   "extends": "@tsconfig/node24/tsconfig.json",
   "compilerOptions": {
     "types": ["node"],
-
-    // additional options
     "strict": true,
     "noImplicitReturns": true,
     "noImplicitThis": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-
-    // for native execution (action)
     "erasableSyntaxOnly": true,
     "allowImportingTsExtensions": true,
-
-    // for npm module (library, cli)
-    "rootDir": "lib",
-    "outDir": "dist",
-    "declaration": true,
-    "noEmit": false,
-    "rewriteRelativeImportExtensions": true,
+    "noEmit": true,
   },
-  "exclude": [
-    "**/*.test.ts",
-    "**/*_test.ts",
-    "scripts/**",
-    "dist/**",
-  ],
 }

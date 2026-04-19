@@ -19,14 +19,16 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": "dist/cli.js",
   "engines": {
     "node": ">= 24"
   },
   "scripts": {
-    "lint": "tsc --noEmit",
-    "build": "tsc",
+    "lint": "tsc",
+    "build": "tsc -p tsconfig.lib.json",
     "test": "node --test --experimental-test-coverage",
-    "release": "node scripts/release.ts"
+    "release": "node scripts/release.ts",
+    "cli": "node lib/cli.ts"
   },
   "devDependencies": {
     "@tsconfig/node24": "^24.0.4",

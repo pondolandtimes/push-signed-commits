@@ -27,6 +27,7 @@ jobs:
           node-version-file: package.json
       - run: npm ci
       - run: npx tsc
+      - run: npm run lint
       - run: npm run build
       - run: node --test --experimental-test-coverage
   action:
