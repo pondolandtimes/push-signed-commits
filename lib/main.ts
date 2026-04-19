@@ -26,7 +26,7 @@ export interface Options {
   githubToken: GitHubToken | null,
   githubApiUrl: GitHubApiUrl,
   githubGraphqlUrl: GitHubGraphqlUrl,
-  appId: number,
+  appId: number | null,
   appKey: KeyObject | null,
   git: string,
 }
@@ -81,7 +81,7 @@ export async function main(opts: Options, done?: (out: Output) => void): Promise
     const r = await repo(opts.git, opts.path)
 
     if (!opts.dryRun) {
-      if (opts.appId) {
+      if (opts.appId != null) {
         if (!opts.appKey) {
           throw new Error(`App private key is required if app id is set`)
         }
@@ -201,6 +201,14 @@ export function parsePrivateKey(str: string): KeyObject {
     key: str,
     format: 'pem',
   })
+}
+
+export function parseInteger(str: string): number {
+  const v = Number(str)
+  if (!Number.isInteger(v)) {
+    throw new TypeError(`Invalid integer`)
+  }
+  return v
 }
 
 export function validateBaseUrl(str: string) {

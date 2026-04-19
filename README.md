@@ -156,20 +156,20 @@ npm install --save push-signed-commits@v0.0.11
 ```
 usage: npx -y push-signed-commits@v0.0.11 [options] username/repository target_branch [revision]
 
-  -C STRING                                                    repository path (default ".")
-      --allow-empty                                            create en empty commit even if there are no changes
-  -m, --message STRING                                         commit message to use if creating a new commit from the staging area
-  -F, --file STRING                                            read the commit message from the specified (overrides --message)
-  -A, --user-agent STRING                                      override the user agent for GitHub API requests
-  -k, --insecure                                               do not validate check tls certificates for GitHub API requests
-  -n, --dry-run                                                do not actually push commits, just print the mutations
-      --github-token STRING, $GITHUB_TOKEN=STRING              github token with contents:write permission
-      --github-api-url STRING, $GITHUB_API_URL=STRING          github api url (default "https://api.github.com")
-      --github-grqphql-url STRING, $GITHUB_GRAPHQL_URL=STRING  github graphql api url (default "https://api.github.com/graphql")
-      --app INTEGER                                            authenticate as a github app with the specified id (overrides --github-token)
-      --app-key STRING                                         the private key to use if authenticating as a github app (can be base64-encoded or contain escaped newlines)
-      --git STRING                                             the git binary to use (default "git")
-  -h, --help                                                   show this help text
+      --allow-empty             create en empty commit even if there are no changes
+  -m, --message message         commit message to use if creating a new commit from the staging area
+  -F, --file path               read the commit message from the specified (overrides --message)
+  -A, --user-agent str          override the user agent for GitHub API requests
+  -k, --insecure                do not validate check tls certificates for GitHub API requests
+  -n, --dry-run                 do not actually push commits, just print the mutations
+      --github-token token      github token with contents:write permission (env GITHUB_TOKEN)
+      --github-api-url url      github api url (env GITHUB_API_URL) (default "https://api.github.com")
+      --github-grqphql-url url  github graphql api url (env GITHUB_GRAPHQL_URL) (default "https://api.github.com/graphql")
+      --app id                  authenticate as a github app with the specified id (overrides --github-token)
+      --app-key pem             the private key to use if authenticating as a github app (can be base64-encoded or contain escaped newlines)
+      --git cmd                 the git executable to use (default "git")
+  -h, --help                    show this help text
+  -C  path                      repository path (default ".")
 
 revision is a commit or range of commits (see man gitrevisions(7))
 if not specified, a commit is created from the staging area

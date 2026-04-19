@@ -10,6 +10,7 @@ import {
 } from './github.ts'
 import {
   type Output, main,
+  parseInteger,
   parsePrivateKey, validateBaseUrl,
 } from './main.ts'
 
@@ -39,7 +40,7 @@ export function inputs(): Parameters<typeof main>[0] {
       githubToken: getInput('github-token') as GitHubToken,
       githubApiUrl: getUrlInput('github-api-url') as GitHubApiUrl || env['GITHUB_API_URL'] as GitHubApiUrl || DefaultGitHubApi,
       githubGraphqlUrl: getUrlInput('github-graphql-url') as GitHubGraphqlUrl || env['GITHUB_GRAPHQL_URL'] as GitHubGraphqlUrl || DefaultGitHubGraphql,
-      appId: getIntegerInput('app-id') ?? 0,
+      appId: getIntegerInput('app-id') ?? null,
       appKey: getKeyInput('app-key') ?? null,
       git: getInput('git-binary') || 'git',
     }
@@ -126,11 +127,11 @@ function getBoolInput(name: string): boolean | undefined {
 function getIntegerInput(name: string): number | undefined {
   const str = getInput(name)
   if (str !== '') {
-    const v = Number(str)
-    if (!Number.isInteger(v)) {
-      throw new ActionInputError(name, `Invalid integer ${JSON.stringify(str)}`)
+    try {
+      return parseInteger(str)
+    } catch (err) {
+      throw new ActionInputError(name, `${err instanceof Error ? err.message : err}`)
     }
-    return v
   }
   return
 }

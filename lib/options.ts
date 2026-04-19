@@ -10,28 +10,20 @@ import { argv as procArgv, env as procEnv } from 'node:process'
 export type OptionType = {
   /** bool: -o, --opt, $ENV=true|t|1|y|yes|false|f|0|n|no (no default value allowed) */
   bool: boolean,
-  /** string: -oSTRING, --opt=STRING, -o STRING, --opt STRING, $env=STRING */
-  string: string,
-  /** integer: -oN, --opt=N, -o N, --opt N, $env=N */
-  integer: number,
-  /** number: -oN, --opt=N, -o N, --opt N, $env=N */
-  number: number,
+  /** str: -ovalue, --opt=value, -o value, --opt value, $env=value */
+  str: string,
 }
 
 /** Option type default values. */
 export const OptionDefault = {
   bool: 'false',
-  string: '',
-  integer: '0',
-  number: '0',
+  str: '',
 } as const satisfies Record<keyof OptionType, string>
 
 /** Whether an option type requires a value when specified on the command-line. */
 const OptionHasArgumentValue = {
   bool: false,
-  string: true,
-  integer: true,
-  number: true,
+  str: true,
 } as const satisfies Record<keyof OptionType, boolean>
 
 /** Option definition. */
@@ -41,6 +33,7 @@ export interface Option<T extends keyof OptionType = keyof OptionType> {
   long?: string,
   short?: string,
   env?: string,
+  kind?: string,
   default?: T extends keyof OptionType ? typeof OptionHasArgumentValue[T] extends true ? string : never : never,
   parse?(v: OptionType[T]): any,
 };
@@ -85,28 +78,20 @@ export function parseOption<T extends Option>(opt: T, value: string): OptionValu
     case 'bool':
       if (/^(true|t|1|y|yes)$/i.test(value)) v = true
       else if (/^(false|f|0|n|no)$/i.test(value)) v = false
-      else throw new OptionError(null, opt, `invalid ${opt.type} ${JSON.stringify(value)}`)
+      else throw new OptionError(null, opt, `invalid ${opt.kind || opt.type} ${JSON.stringify(value)}`)
       break
-    case 'string':
+    case 'str':
       v = value
-      break
-    case 'integer':
-      v = Number(value)
-      if (!Number.isInteger(v)) {
-        throw new OptionError(null, opt, `invalid ${opt.type} ${JSON.stringify(value)}`)
-      }
-      break
-    case 'number':
-      v = Number(value)
-      if (isNaN(v)) {
-        throw new OptionError(null, opt, `Invalid ${opt.type} ${JSON.stringify(value)}`)
-      }
       break
     default:
       const invalid: never = opt.type
       throw new TypeError(`Invalid type ${invalid}`)
   }
-  return (opt.parse ? opt.parse(v) : v) as any
+  try {
+    return (opt.parse ? opt.parse(v) : v) as any
+  } catch (err) {
+    throw new OptionError(null, opt, `invalid ${opt.kind || opt.type}: ${err instanceof Error ? err.message : err}`)
+  }
 }
 
 /**
@@ -115,7 +100,7 @@ export function parseOption<T extends Option>(opt: T, value: string): OptionValu
  */
 export function parseDefaultOptions<T extends Options>(opts: T): ParsedOptions<T> {
   for (const [key, opt] of Object.entries(opts)) {
-    if (!['bool', 'string', 'file', 'count', 'integer', 'number'].includes(opt.type)) {
+    if (!Object.keys(OptionDefault).includes(opt.type)) {
       throw new TypeError(`Argument ${key} has invalid type ${opt.type}`)
     }
     if (opt.long && !/^[a-zA-Z0-9]([a-zA-Z0-9_-]*[a-zA-Z0-9])?$/.test(opt.long)) {
@@ -294,22 +279,22 @@ export function help(opts: Options): string {
   for (const opt of Object.values(opts)) {
     if (opt.help) {
       const value = OptionHasArgumentValue[opt.type]
-        ? ` ${opt.type.toUpperCase()}`
+        ? ` ${opt.kind || opt.type}`
         : ``
       const name = opt.short && opt.long
         ? `-${opt.short}, --${opt.long}${value}`
         : opt.short
-          ? `-${opt.short}${value}`
+          ? `-${opt.short} ${value}`
           : opt.long
             ? `    --${opt.long}${value}`
             : ``
       const env = opt.env
-        ? `${name ? `, ` : ``}$${opt.env}=${opt.type.toUpperCase()}`
+        ? ` (env ${opt.env})`
         : ``
       const def = opt.default || opt.default == ''
         ? ` (default ${JSON.stringify(opt.default)})`
         : ``
-      rows.push([`${name}${env}`, `${opt.help}${def}`])
+      rows.push([`${name}`, `${opt.help}${env}${def}`])
     }
   }
   const width = rows.reduce((m, [l]) => Math.max(m, l.length), 0)
