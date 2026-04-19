@@ -28,7 +28,7 @@ jobs:
       - run: npm ci
       - run: npm run release ${{ inputs.version }}
       - run: git add . && git diff --staged
-      - uses: pgaskin/push-signed-commits@v0.0.8
+      - uses: pgaskin/push-signed-commits@v0.1.0
         with:
           commit-message: Release ${{ inputs.version }}
           allow-empty: true
