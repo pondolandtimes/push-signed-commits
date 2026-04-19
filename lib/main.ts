@@ -158,6 +158,9 @@ export async function main(println: (msg?: string) => void, opts: Options, done?
     }
   } catch (err) {
     if (err instanceof NotPushableError) {
+      if (!err.message.includes('parent')) {
+        err.message += ` (see https://github.com/orgs/community/discussions/191953)`
+      }
       notPushable = true
     }
     println()
