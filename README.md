@@ -129,26 +129,26 @@ npm install --save push-signed-commits@v0.1.0
 
 ##### Outputs
 
-- `not-pushable`
+- `not-pushable` \
   Set to true if one or more commits were not pushed (the oid outputs will
   still be set to the ones pushed so far) since they contained unpushable
   content.
 
-- `pushed-oids`
+- `pushed-oids` \
   The new commit hash of all commits pushed, space-separated. On failure, it
   contains the ones pushed so far. Not set if 'dry-run'.
 
-- `pushed-oid`
+- `pushed-oid` \
   The new commit hash of the last commit pushed, or an empty string if no
   commits were pushed. On failure, it contains the ones pushed so far. Not
   set if 'dry-run'.
 
-- `local-commit-oids`
+- `local-commit-oids` \
   The local commit hashes of all commits pushed corresponding to the ones in
   commit-oids. Not set if creating a new commit from the staging area. Still
   set if 'dry-run'.
 
-- `local-commit-oid`
+- `local-commit-oid` \
   The local commit hashes of the last commit pushed corresponding to the
   ones in commit-oids. Not set if creating a new commit from the staging
   area. Still set if 'dry-run'.

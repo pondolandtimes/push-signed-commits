@@ -70,7 +70,7 @@ readme = readme.replace(/(#### Inputs\n\n)```yaml\n[\s\S]*?```/, `$1\`\`\`yaml\n
 ].join('\n\n').replaceAll('$', '$$')}\n\`\`\``)
 readme = readme.replace(/(#### Outputs\n\n)([\s\S]*?)(\n#### )/, `$1${[
   ...Object.entries(action.outputs).map(([k, v]) => [
-    `- \`${k}\``,
+    `- \`${k}\` \\`,
     ...v.lines.map(l => '  ' + l),
   ].join('\n')),
 ].join('\n\n').replaceAll('$', '$$')}\n$3`)
