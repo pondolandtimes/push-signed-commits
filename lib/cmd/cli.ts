@@ -6,13 +6,14 @@ import {
   type GitHubToken,
   type GitHubApiUrl, DefaultGitHubApi,
   type GitHubGraphqlUrl, DefaultGitHubGraphql,
-  DefaultUserAgent, setRetryLog,
+  setRetryLog,
 } from '../core/github.ts'
 import { OptionError, parseOptions, help } from '../util/options.ts'
 import {
   type Input, main as main_,
   parseInteger, parsePrivateKey, validateBaseUrl,
 } from './main.ts'
+import { makeUserAgent } from '../util/util.ts'
 
 /** Invalid positional arguments. */
 export class ArgumentError extends Error {
@@ -59,7 +60,7 @@ const spec = {
   allowEmpty: { type: 'bool', long: 'allow-empty', help: 'create en empty commit even if there are no changes' }, // matches git-commit
   commitMessage: { type: 'str', kind: 'message', short: 'm', long: 'message', help: 'commit message to use if creating a new commit from the staging area' }, // matches git-commit
   commitMessageFile: { type: 'str', kind: 'path', short: 'F', long: 'file', help: 'read the commit message from the specified (overrides --message)', parse: p => p || null }, // matches git-commit
-  userAgent: { type: 'str', short: 'A', long: 'user-agent', default: DefaultUserAgent, help: 'override the user agent for GitHub API requests' }, // matches curl
+  userAgent: { type: 'str', short: 'A', long: 'user-agent', default: makeUserAgent(), help: 'override the user agent for GitHub API requests' }, // matches curl
   insecure: { type: 'bool', short: 'k', long: 'insecure', help: 'do not validate check tls certificates for GitHub API requests' }, // matches curl
   dryRun: { type: 'bool', short: 'n', long: 'dry-run', help: 'do not actually push commits, just print the mutations' }, // matches most tools
   githubToken: { type: 'str', kind: 'token', long: 'github-token', env: 'GITHUB_TOKEN', help: 'github token with contents:write permission', parse: t => t ? t as GitHubToken : null }, // env is standard

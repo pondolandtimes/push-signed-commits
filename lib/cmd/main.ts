@@ -48,9 +48,7 @@ export async function main(log: (msg?: string) => void, input: Input, done?: (ou
     if (input.insecure) {
       process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '1'
     }
-    if (input.userAgent) {
-      setUserAgent(input.userAgent)
-    }
+    setUserAgent(input.userAgent)
 
     if (!/.[/]./.test(input.repository)) {
       throw new Error(`Invalid repository ${JSON.stringify(input.repository)}: must be in username/repository format`)

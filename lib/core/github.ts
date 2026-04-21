@@ -1,7 +1,7 @@
 import { type KeyObject, createSign } from 'node:crypto'
 import { debuglog } from 'node:util'
 import type { OID } from './git.ts'
-import { defaultUserAgent, jsonify } from '../util/util.ts'
+import { jsonify } from '../util/util.ts'
 
 const debug = debuglog('github') // NODE_DEBUG=github
 
@@ -16,13 +16,12 @@ export type GitHubGraphqlUrl = string & { __ghgqlapi: true }
 
 export const DefaultGitHubApi = 'https://api.github.com' as GitHubApiUrl
 export const DefaultGitHubGraphql = 'https://api.github.com/graphql' as GitHubGraphqlUrl
-export const DefaultUserAgent = defaultUserAgent()
 
-let userAgent = DefaultUserAgent
+let userAgent = ''
 
 /** Sets the user agent used for requests. */
 export function setUserAgent(ua: string): void {
-  userAgent = ua || DefaultUserAgent
+  userAgent = ua
 }
 
 /** Creates a signed GitHub App JWT. */
@@ -106,9 +105,11 @@ async function request(gh: GitHubApiUrl, token: GitHubToken, method: string, pat
   const headers = new Headers({
     'Accept': 'application/vnd.github+json',
     'Authorization': `Bearer ${token}`,
-    'User-Agent': userAgent,
     'X-GitHub-Api-Version': '2026-03-10',
   })
+  if (userAgent) {
+    headers.set('User-Agent', userAgent)
+  }
   if (body !== undefined) {
     headers.set('Content-Type', 'application/json')
     body = JSON.stringify(body)
@@ -174,8 +175,10 @@ export async function createCommitOnBranch(gh: GitHubGraphqlUrl, token: GitHubTo
     'Accept': 'application/json',
     'Authorization': `Bearer ${token}`,
     'Content-Type': 'application/json',
-    'User-Agent': userAgent,
   })
+  if (userAgent) {
+    headers.set('User-Agent', userAgent)
+  }
   const body = JSON.stringify({
     query: `
       mutation($input: CreateCommitOnBranchInput!) {

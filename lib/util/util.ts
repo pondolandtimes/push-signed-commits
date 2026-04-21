@@ -1,6 +1,6 @@
 import pkg from '../../package.json' with { type: 'json' }
 
-export function defaultUserAgent(): string {
+export function makeUserAgent(): string {
   let ua = `${pkg.name}`
   if (pkg.version) {
     ua += `/${pkg.version}`

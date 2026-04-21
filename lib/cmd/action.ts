@@ -16,6 +16,7 @@ import {
   parseInteger,
   parsePrivateKey, validateBaseUrl,
 } from './main.ts'
+import { makeUserAgent } from '../util/util.ts'
 
 /** Invalid input. */
 export class ActionInputError extends Error {
@@ -61,7 +62,7 @@ export function inputs(env: NodeJS.ProcessEnv): Input {
     allowEmpty: getBoolInput('allow-empty') ?? false,
     commitMessage: getInput('commit-message'),
     commitMessageFile: getFileInput('commit-message-file') ?? null,
-    userAgent: getInput('user-agent'),
+    userAgent: getInput('user-agent') || makeUserAgent(),
     insecure: getBoolInput('insecure') ?? false,
     dryRun: getBoolInput('dry-run') ?? false,
     githubToken: getInput('github-token') as GitHubToken,
