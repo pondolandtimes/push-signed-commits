@@ -16,11 +16,29 @@ export type GitHubGraphqlUrl = string & { __ghgqlapi: true }
 export const DefaultGitHubApi = 'https://api.github.com' as GitHubApiUrl
 export const DefaultGitHubGraphql = 'https://api.github.com/graphql' as GitHubGraphqlUrl
 
-let userAgent = ''
+let globalUserAgent = ''
 
 /** Sets the user agent used for requests. */
 export function setUserAgent(ua: string): void {
-  userAgent = ua
+  globalUserAgent = ua
+}
+
+interface TokenProps {
+  maxRetries: number,
+  userAgent: string,
+}
+
+type TokenProp = keyof TokenProps
+type TokenWithProp<T extends TokenProp> = GitHubToken & { [K in T]: TokenProps[T] }
+
+/** Returns a copy of token with retries enabled. */
+export function withRetries(token: GitHubToken, maxRetries = 3): GitHubToken {
+  return withTokenProp(token, 'maxRetries', maxRetries)
+}
+
+/** Returns a copy of token with the user agent overridden. */
+export function withUserAgent(token: GitHubToken, userAgent: string): GitHubToken {
+  return withTokenProp(token, 'userAgent', userAgent)
 }
 
 /** Creates a signed GitHub App JWT. */
@@ -103,19 +121,15 @@ async function request(gh: GitHubApiUrl, token: GitHubToken, method: string, pat
 
   const headers = new Headers({
     'Accept': 'application/vnd.github+json',
-    'Authorization': `Bearer ${token}`,
     'X-GitHub-Api-Version': '2026-03-10',
   })
-  if (userAgent) {
-    headers.set('User-Agent', userAgent)
-  }
   if (body !== undefined) {
     headers.set('Content-Type', 'application/json')
     body = JSON.stringify(body)
   }
 
   try {
-    return await fetchRetry(url, {
+    return await fetchRetry(token, url, {
       method,
       headers,
       body,
@@ -172,12 +186,8 @@ export async function createCommitOnBranch(gh: GitHubGraphqlUrl, token: GitHubTo
   const method = 'POST'
   const headers = new Headers({
     'Accept': 'application/json',
-    'Authorization': `Bearer ${token}`,
     'Content-Type': 'application/json',
   })
-  if (userAgent) {
-    headers.set('User-Agent', userAgent)
-  }
   const body = JSON.stringify({
     query: `
       mutation($input: CreateCommitOnBranchInput!) {
@@ -195,7 +205,7 @@ export async function createCommitOnBranch(gh: GitHubGraphqlUrl, token: GitHubTo
 
   await commitThrottle()
 
-  const [resp, text] = await fetchRetry(url, {
+  const [resp, text] = await fetchRetry(token, url, {
     method,
     headers,
     body,
@@ -255,9 +265,19 @@ export function setRetryLog(fn: (msg: string) => void): void {
  * Like fetch, but retries GitHub API requests using similar logic to
  * @octokit/plugin-throttling and @octokit/plugin-retry.
  */
-export async function fetchRetry(url: URL, init: RequestInit, opt?: RetryOptions): Promise<[Response, string]> {
-  const maxRetries = opt?.maxRetries ?? 3 // like @octokit/plugin-retry
+export async function fetchRetry(token: GitHubToken, url: URL, init: RequestInit): Promise<[Response, string]> {
+  const maxRetries = tokenProp(token, 'maxRetries') ?? 3 // like @octokit/plugin-retry
+  const userAgent = tokenProp(token, 'userAgent') ?? globalUserAgent
   const doNotRetry = new Set([400, 401, 403, 404, 410, 422, 451]) // like @octokit/plugin-retry
+
+  const headers = new Headers(init.headers)
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+  if (userAgent) {
+    headers.set('User-Agent', userAgent)
+  }
+  init = {...init, headers}
 
   for (let attempt = 1; ; attempt++) {
     const prefix = `${init.method ?? 'GET'} ${url} (attempt ${attempt})`
@@ -339,4 +359,45 @@ function throttle(interval: number): () => Promise<void> {
     }
     last = Date.now()
   }
+}
+
+const symbols = {
+  maxRetries: Symbol('maxRetries'),
+  userAgent: Symbol('userAgent')
+} as const satisfies { [K in keyof TokenProps]: symbol}
+
+function withTokenProp<T extends GitHubToken, U extends TokenProp>(token: T, key: U, val: TokenProps[U]): TokenWithProp<U> {
+  const tmp = new String(token)
+  const sym = symbols[key]
+  if (!sym) {
+    throw new TypeError(jsonify`Unknown prop ${key}`)
+  }
+  for (const x of Object.values(symbols)) {
+    if (Object.hasOwn(token, x) && x !== sym) {
+      Object.defineProperty(tmp, x, {
+        value: (token as any)[x],
+        configurable: false,
+        enumerable: false,
+      })
+    }
+  }
+  Object.defineProperty(tmp, sym, {
+    value: val,
+    configurable: false,
+    enumerable: false,
+  })
+  return tmp as any
+}
+
+function tokenProp<T extends GitHubToken, U extends TokenProp>(token: T, key: U): T extends TokenWithProp<U> ? TokenProps[U] : TokenProps[U] | undefined {
+  const sym = symbols[key]
+  if (Object.hasOwn(token, sym)) {
+    return (token as any)[sym] as TokenProps[U]
+  }
+  return undefined as any
+}
+
+export const __test = {
+  withTokenProp,
+  tokenProp,
 }

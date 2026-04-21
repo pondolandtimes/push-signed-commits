@@ -1,7 +1,7 @@
 import { type Commit, staged as staged_, commits as commits_ } from './core/commit.ts'
 import { repo as repo_ } from './core/git.ts'
 import type { CreateCommitOnBranchInput, GitHubGraphqlUrl, GitHubToken, GitObjectID } from './core/github.ts'
-import { createCommitOnBranch as createCommitOnBranch_ } from './core/github.ts'
+import { createCommitOnBranch as createCommitOnBranch_, withRetries as withMaxRetries, withUserAgent } from './core/github.ts'
 
 // note: only stuff exported from this file is part of the stable api
 
@@ -51,6 +51,13 @@ export async function* commits(git: string, repo: string, revision: string): Asy
   yield* commits_(r, revision)
 }
 
+export interface CreateCommitOnBranchOptions {
+  /** The maximum number of retries (0 for none). */
+  maxRetries?: number,
+  /** Set the user agent. */
+  userAgent?: string,
+}
+
 /**
  * Invokes the createCommitOnBranch mutation, automatically handling retries and
  * throttling.
@@ -58,8 +65,13 @@ export async function* commits(git: string, repo: string, revision: string): Asy
  * @param token GitHub token with contents:write permissions.
  * @param input Input for the createCommitOnBranch mutation.
  */
-export async function createCommitOnBranch(url: string, token: string, input: CreateCommitOnBranchInput): Promise<GitObjectID> {
-  return createCommitOnBranch_(url as GitHubGraphqlUrl, token as GitHubToken, input)
+export async function createCommitOnBranch(url: string, token: string, input: CreateCommitOnBranchInput, options?: CreateCommitOnBranchOptions): Promise<GitObjectID> {
+  let tok = String(token) as GitHubToken
+  if (options?.maxRetries != undefined) {
+    tok = withMaxRetries(tok, options?.maxRetries)
+  }
+  if (options?.userAgent != undefined) {
+    tok = withUserAgent(tok, options?.userAgent)
+  }
+  return createCommitOnBranch_(url as GitHubGraphqlUrl, tok, input)
 }
-
-// TODO: expose user agent stuff?
