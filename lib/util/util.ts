@@ -19,9 +19,9 @@ export function jsonify(strings: TemplateStringsArray, ...values: any[]) {
   return strings.reduce((acc, str, i) => acc + str + (i < values.length ? JSON.stringify(values[i]) : ''), '');
 }
 
-let debugLogHooks: ((msg: string) => string)[] = []
+let debugLogHooks: ((section: string, msg: string) => void)[] = []
 
-export function hookDebugLog(hook: (msg: string) => string) {
+export function hookDebugLog(hook: (section: string, msg: string) => void) {
   debugLogHooks.push(hook)
 }
 
@@ -29,7 +29,7 @@ export function debuglog(section: string): ((msg: string) => void) & { readonly 
   const debug = debuglogNode(section)
   const log = (msg: string) => {
     for (const hook of debugLogHooks) {
-      msg = hook(msg)
+      hook(section, msg)
     }
     debug('%s', msg)
   }

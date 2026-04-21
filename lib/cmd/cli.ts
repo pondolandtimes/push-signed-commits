@@ -13,7 +13,7 @@ import {
   type Input, main as main_,
   parseInteger, parsePrivateKey, validateBaseUrl,
 } from './main.ts'
-import { makeUserAgent } from '../util/util.ts'
+import { hookDebugLog, makeUserAgent } from '../util/util.ts'
 
 /** Invalid positional arguments. */
 export class ArgumentError extends Error {
@@ -52,6 +52,11 @@ export async function main(opts: {
     colorMode: 'auto',
   })
   const log = (msg?: string) => msg ? console.log(msg) : console.log()
+  if (opt.verbose) {
+    hookDebugLog((section, msg) => {
+      log(styleText(['magenta', 'dim'], `[${section}] ${msg}`))
+    })
+  }
   setRetryLog(msg => log(styleText(['dim', 'yellow'], msg)))
   return await main_(log, opt)
 }
@@ -70,6 +75,7 @@ const spec = {
   appKey: { type: 'str', kind: 'pem', long: 'app-key', env: 'APP_PRIVATE_KEY', help: 'the private key to use if authenticating as a github app (can be base64-encoded or contain escaped newlines)', parse: s => s ? parsePrivateKey(s) : null },
   git: { type: 'str', kind: 'cmd', long: 'git', help: 'the git executable to use', default: 'git' },
   help: { type: 'bool', short: 'h', long: 'help', help: 'show this help text' },
+  verbose: { type: 'bool', short: 'v', long: 'verbose', help: `show debug output` },
   path: { type: 'str', kind: 'path', short: 'C', help: 'repository path', default: '.' }, // matches git-commit, most tools
 } as const satisfies Parameters<typeof parseOptions>[0]
 
@@ -89,7 +95,9 @@ export function usage(cmd: string, eol: string = '\n'): string {
  * Parse the arguments, throwing an {@link OptionError} or
  * {@link ArgumentError} if invalid.
  */
-export function inputs(env: NodeJS.ProcessEnv, argv: string[]): Input {
+export function inputs(env: NodeJS.ProcessEnv, argv: string[]): Input & {
+  verbose: boolean,
+} {
   const {opts, args} = parseOptions(spec, argv, env)
   if (opts.help || args.length < 2 || args.length > 3) {
     throw new ArgumentError(opts.help)
