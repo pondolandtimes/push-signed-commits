@@ -1,6 +1,5 @@
 import { spawn } from 'node:child_process'
-import { debuglog } from 'node:util'
-import { jsonify } from '../util/util.ts'
+import { debuglog, jsonify } from '../util/util.ts'
 
 const debug = debuglog('git') // NODE_DEBUG=git
 
@@ -282,7 +281,7 @@ interface GitOutput extends IteratorObject<string, void, void> {
 
 function run<T extends boolean>(raw: T, git: string, dir: string | null, ...args: string[]): Promise<T extends true ? Buffer : GitOutput> {
   return new Promise((resolve, reject) => {
-    debug('%s', `${dir}: ${git} ${JSON.stringify(args)}`)
+    debug(`${dir}: ${git} ${JSON.stringify(args)}`)
     const child = spawn(git, [...(dir == null ? [] : ['-C', dir]), ...args])
     const stdout: Buffer[] = []
     const stderr: Buffer[] = []

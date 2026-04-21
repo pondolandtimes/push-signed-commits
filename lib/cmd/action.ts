@@ -10,13 +10,13 @@ import {
   type GitHubGraphqlUrl, DefaultGitHubGraphql,
   setRetryLog,
 } from '../core/github.ts'
-import { getInput, setOutput } from '../util/gha.ts'
+import { debug, getInput, setOutput } from '../util/gha.ts'
 import {
   type Input, type Output, main as main_,
   parseInteger,
   parsePrivateKey, validateBaseUrl,
 } from './main.ts'
-import { makeUserAgent } from '../util/util.ts'
+import { hookDebugLog, makeUserAgent } from '../util/util.ts'
 
 /** Invalid input. */
 export class ActionInputError extends Error {
@@ -42,6 +42,10 @@ export async function main(opts: {
     })
     const log = (msg?: string) => msg ? console.log(msg) : console.log()
     setRetryLog(msg => log(styleText(['dim', 'yellow'], msg)))
+    hookDebugLog(msg => {
+      debug(msg) // secret ACTIONS_STEP_DEBUG
+      return msg
+    })
     return await main_(log, inputs(opts.env), outputs)
   } catch (err) {
     if (err instanceof ActionInputError) {

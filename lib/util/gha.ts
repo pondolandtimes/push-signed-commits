@@ -5,6 +5,10 @@ import { env, stdout } from "node:process"
 
 // https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands
 
+export function debug(msg: string): void {
+  issueCommand('debug', {}, msg)
+}
+
 // actions/core@v3.0.0/src/core.ts, but simpler
 export function getInput(name: string): string {
   const key = `INPUT_${name.replace(/ /g, '_').toUpperCase()}`

@@ -1,7 +1,6 @@
 import { type KeyObject, createSign } from 'node:crypto'
-import { debuglog } from 'node:util'
 import type { OID } from './git.ts'
-import { jsonify } from '../util/util.ts'
+import { debuglog, jsonify } from '../util/util.ts'
 
 const debug = debuglog('github') // NODE_DEBUG=github
 
