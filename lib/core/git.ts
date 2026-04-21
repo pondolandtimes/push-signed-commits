@@ -197,7 +197,7 @@ export async function message(git: string, repo: string, commit: Committish): Pr
   return out.all('raw commit message')
 }
 
-export type GitDiffEntry = {
+export interface GitDiffEntry {
   src_mode: number,
   dst_mode: number,
   src_oid: OID,
