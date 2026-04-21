@@ -4,7 +4,7 @@ import { styleText } from 'node:util'
 import { type CommitOID, repo } from '../core/git.ts'
 import { NotPushableError, commits, staged } from '../core/commit.ts'
 import {
-  type GitHubToken,
+  type GitHubToken, type GitHubInstallationToken,
   type GitHubApiUrl,
   type GitHubGraphqlUrl, setUserAgent,
   appJwt, getRepoInstallation, createInstallationToken, revokeInstallationToken,
@@ -38,7 +38,7 @@ export interface Output {
 
 /** Generic entry point. */
 export async function main(log: (msg?: string) => void, input: Input, done?: (output: Output) => void): Promise<number> {
-  let revoke = false
+  let revoke: GitHubInstallationToken | undefined
   let commitMessage: string
   let token: GitHubToken | undefined
   let localOIDs: CommitOID[] = []
@@ -88,9 +88,8 @@ export async function main(log: (msg?: string) => void, input: Input, done?: (ou
           log(styleText('white', `Getting app ${input.appId} installation for repo ${input.repository}`))
           const installID = await getRepoInstallation(input.githubApiUrl, jwt, input.repository)
           log(styleText('white', `Generating app token for app ${input.appId} installation ${installID}`))
-          token = await createInstallationToken(input.githubApiUrl, jwt, input.repository, installID)
+          token = revoke = await createInstallationToken(input.githubApiUrl, jwt, input.repository, installID)
           log(styleText('white', `Have app installation token`))
-          revoke = true
         } catch (err) {
           throw new Error(`Failed to create app installation token for repo ${input.repository}: ${err}`)
         }
@@ -183,7 +182,7 @@ export async function main(log: (msg?: string) => void, input: Input, done?: (ou
       log()
       try {
         log(styleText('white', `Revoking app installation token`))
-        await revokeInstallationToken(input.githubApiUrl, token!)
+        await revokeInstallationToken(input.githubApiUrl, revoke)
         log(styleText('white', `Revoked app installation token`))
       } catch (err) {
         log(styleText('yellow', `Failed to revoke app installation token, continuing anyways: ${err}`))

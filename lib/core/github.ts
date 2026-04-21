@@ -6,6 +6,8 @@ const debug = debuglog('github') // NODE_DEBUG=github
 
 /** A GitHub token. */
 export type GitHubToken = string & { __token: true }
+export type GitHubAppJwt = GitHubToken & { __token_appjwt: true }
+export type GitHubInstallationToken = GitHubToken & { __token_installation: true }
 
 /** The GitHub REST API base URL. */
 export type GitHubApiUrl = string & { __ghapi: true }
@@ -42,7 +44,7 @@ export function withUserAgent(token: GitHubToken, userAgent: string): GitHubToke
 }
 
 /** Creates a signed GitHub App JWT. */
-export function appJwt(appId: number, rsaKey: KeyObject): GitHubToken {
+export function appJwt(appId: number, rsaKey: KeyObject): GitHubAppJwt {
   const header = Buffer.from(JSON.stringify({
     alg: 'RS256',
     typ: 'JWT',
@@ -59,11 +61,11 @@ export function appJwt(appId: number, rsaKey: KeyObject): GitHubToken {
   sign.update(`${header}.${payload}`)
   const signature = sign.sign(rsaKey, 'base64url')
 
-  return `${header}.${payload}.${signature}` as GitHubToken
+  return `${header}.${payload}.${signature}` as GitHubAppJwt
 }
 
 /** Get the GitHub App installation ID for repo. */
-export async function getRepoInstallation(gh: GitHubApiUrl, jwt: GitHubToken, repo: string): Promise<number> {
+export async function getRepoInstallation(gh: GitHubApiUrl, jwt: GitHubAppJwt, repo: string): Promise<number> {
   const [resp, text] = await request(gh, jwt, 'GET', `repos/${repo}/installation`)
   if (resp.status !== 200) {
     throw new Error(jsonify`Response status ${resp.status} (body: ${text})`)
@@ -78,7 +80,7 @@ export async function getRepoInstallation(gh: GitHubApiUrl, jwt: GitHubToken, re
 }
 
 /** Create a GitHub App installation token for installId with contents:write permission on repo. */
-export async function createInstallationToken(gh: GitHubApiUrl, jwt: GitHubToken, repo: string, installId: number): Promise<GitHubToken> {
+export async function createInstallationToken(gh: GitHubApiUrl, jwt: GitHubAppJwt, repo: string, installId: number): Promise<GitHubInstallationToken> {
   const [resp, text] = await request(gh, jwt, 'POST', `app/installations/${installId}/access_tokens`, {
     repositories: [repo.replace(/^.+[/]/, '')],
     permissions: {
@@ -100,11 +102,11 @@ export async function createInstallationToken(gh: GitHubApiUrl, jwt: GitHubToken
   if (obj?.permissions?.contents !== 'write') {
     throw new Error('Installation does not have contents:write access')
   }
-  return obj.token as GitHubToken
+  return obj.token as GitHubInstallationToken
 }
 
 /** Revoke a GitHub App installation token. */
-export async function revokeInstallationToken(gh: GitHubApiUrl, token: GitHubToken): Promise<void> {
+export async function revokeInstallationToken(gh: GitHubApiUrl, token: GitHubInstallationToken): Promise<void> {
   const [resp, text] = await request(gh, token, 'DELETE', 'installation/token')
   if (resp.status !== 204) {
     throw new Error(jsonify`Response status ${resp.status} (body: ${text})`)
